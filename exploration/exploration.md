@@ -12,13 +12,20 @@ I filtered rows using keywords that appear in:
 Primary keywords used:
 glue, adhesive, bond, bonding, wig, lace, weave, closure, frontal
 
+**Final Decision (2026-03-25):** High-precision approach. Keywords kept strict to minimize false positives. Tested adding "edge" for edge control products but removed it as it matched shaving products (false positives). Edge control products without explicit glue terms are acceptable false negatives for Phase 1.
+
 Why this is a good scope:
-- High precision subset
-- Matches my project focus and keeps Phase 1 realistic
+- High precision subset (272 rows from 114k total)
+- Matches project focus on hair glues/weaving adhesives
+- Preserves interpretability for chemical frequency analysis
+- Keeps Phase 1 realistic and focused
+
+Product types included: lace glue, wig glue, bonding glue, weave glue, closure/frontal adhesives
+Product types excluded: gels, sprays, pomades, waxes, lash/nail glue, non-cosmetic adhesives, shaving products
 
 Limitations:
-- Some glue products might not include these keywords (false negatives)
-- Some hits might be unrelated (false positives)
+- Some glue products might not include these keywords (false negatives) - acceptable for Phase 1
+- Edge control products without explicit glue terminology may be missed - acceptable trade-off
 
 ## Plot 1 — Top categories (hair glue subset)
 - File: figures/explore_1_top_categories_hair_glue.png

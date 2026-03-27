@@ -78,6 +78,27 @@ def plot_bar(series: pd.Series, title: str, xlabel: str, outfile: Path, top_n: i
     plt.close()
 
 
+def plot_pie_top_n(series: pd.Series, title: str, outfile: Path, top_n: int = 4):
+    counts = series.value_counts(dropna=True)
+    if counts.empty:
+        print(f"Warning: no data to plot pie chart: {title}")
+        return
+
+    top = counts.head(top_n)
+    other_sum = counts.iloc[top_n:].sum()
+    if other_sum > 0:
+        other_series = pd.Series({"Other": other_sum})
+        top = pd.concat([top, other_series])
+
+    plt.figure(figsize=(8, 8))
+    top.plot(kind="pie", autopct="%1.1f%%", startangle=90, counterclock=False)
+    plt.title(title)
+    plt.ylabel("")
+    plt.tight_layout()
+    plt.savefig(outfile, dpi=200)
+    plt.close()
+
+
 def main():
     df = load_cscp(CSV_PATH)
     print(f"Loaded rows: {len(df):,}")
@@ -129,6 +150,35 @@ def main():
         xlabel="Count of rows (product-ingredient records)",
         outfile=FIG_DIR / "explore_4_top_brands_hair_glue.png",
         top_n=TOP_N_BRANDS,
+    )
+
+    # Pie charts: top-4 slices with others aggregated
+    plot_pie_top_n(
+        glue_df["category_raw"].astype("string"),
+        title="Top 4 Categories (Hair Glue Subset) with Other",
+        outfile=FIG_DIR / "explore_5_top_4_categories_pie.png",
+        top_n=4,
+    )
+
+    plot_pie_top_n(
+        glue_df["ingredient_raw"].astype("string"),
+        title="Top 4 Ingredients (Hair Glue Subset) with Other",
+        outfile=FIG_DIR / "explore_6_top_4_ingredients_pie.png",
+        top_n=4,
+    )
+
+    plot_pie_top_n(
+        glue_df["brand"].astype("string"),
+        title="Top 4 Brands (Hair Glue Subset) with Other",
+        outfile=FIG_DIR / "explore_7_top_4_brands_pie.png",
+        top_n=4,
+    )
+
+    plot_pie_top_n(
+        glue_df["company"].astype("string"),
+        title="Top 4 Companies (Hair Glue Subset) with Other",
+        outfile=FIG_DIR / "explore_8_top_4_companies_pie.png",
+        top_n=4,
     )
 
     # Save summary for notes

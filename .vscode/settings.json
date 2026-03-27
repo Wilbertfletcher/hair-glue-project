@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd /workspaces/hair-glue-project && python -m pipeline\\.cli ingest-cscp --csv data/raw/cscp_chemicals_in_cosmetics\\.csv$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
