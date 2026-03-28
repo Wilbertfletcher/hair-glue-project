@@ -460,4 +460,9 @@ st.sidebar.markdown("- PubChem Chemical Identity")
 st.sidebar.divider()
 st.sidebar.caption(f"Products: {len(data['products'])} | Chemicals: {len(data['ref_chemicals'])}")
 
-pages[page](data)
+try:
+    pages[page](data)
+except Exception as e:
+    st.error(f"Error loading page: {e}")
+    import traceback
+    st.code(traceback.format_exc())
