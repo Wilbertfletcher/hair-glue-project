@@ -21,15 +21,15 @@ The pipeline extracts hair-glue products, identifies their chemical ingredients,
 
 ## Interactive Dashboard
 
-**Launch locally:**
+**Launch locally (Windows):**
 ```bash
-cd /workspaces/hair-glue-project
-source .venv/bin/activate
+cd c:\Users\admin\Desktop\Thesis\hair-glue-project\hair-glue-project
+.venv\Scripts\activate
 streamlit run app.py
 ```
 
-**Codespace URL (when running):**
-https://bookish-goldfish-9prv5964gvv3757v-8501.app.github.dev
+**Local URL (when running):**
+http://localhost:8501
 
 The dashboard has 6 pages:
 
@@ -57,6 +57,10 @@ The dashboard has 6 pages:
 | [M1 Market Trends](../reports/M1_market_trends.md) | Brand risk rankings, category comparison, market concentration analysis |
 | [M2.1 Fallback Resolution](../reports/M2.1_fallback_resolution_report.md) | How the remaining 56 unmatched rows were resolved to reach 100% match rate |
 | [M2.3 Regulatory Data](../reports/M2.3_regulatory_data_report.md) | Regulatory data integration (TSCA, Prop 65, REACH, IARC) |
+| [M2.3 REACH Detail](../reports/M2.3_reach_detail_report.md) | ECHA REACH tonnage band and registrant count per chemical |
+| [M2 Chemical Profiles](../reports/M2_chemical_profiles.md) | Per-chemical deep profile — identity, structure, hazard, regulatory |
+| [M2 Coverage Summary](../reports/M2_coverage_summary.md) | Data completeness matrix across all 16 fields with source attribution |
+| [M2 Enrichment Delta](../reports/M2_enrichment_delta.md) | Before/after comparison across M0–M2 enrichment stages |
 
 ---
 
@@ -71,7 +75,8 @@ All canonical data lives in `warehouse/` as Parquet files:
 | `fact_product_ingredients.parquet` | 147 | Product ↔ ingredient linkage (with CAS numbers) |
 | `ref_chemicals.parquet` | 18 | Canonical chemical reference (PubChem-sourced names, CIDs) |
 | `ref_chemicals_hazard.parquet` | 20 | GHS hazard classifications per chemical |
-| `ref_chemicals_regulatory.parquet` | — | Regulatory status data (TSCA, Prop 65, REACH, IARC) |
+| `ref_chemicals_regulatory.parquet` | 13 | Regulatory status (TSCA, Prop 65, REACH boolean, IARC) |
+| `ref_chemicals_reach.parquet` | 14 | ECHA REACH detail — tonnage band, registrant count, registration type |
 | `dim_hazard_classes.parquet` | 14 | GHS hazard class dimension |
 | `fact_chemical_hazards.parquet` | 55 | Chemical ↔ hazard class linkage (H-codes, P-codes) |
 | `product_hazard_summary.parquet` | 139 | Product-level hazard scores and flags |
@@ -112,11 +117,18 @@ pipeline-cli build-warehouse
 # Enrich with CompTox identifiers
 pipeline-cli enrich-ctx
 
-# Enrich with ChemSpider structure data
-pipeline-cli enrich-chemspider
+# Enrich with ChemSpider structure data (M2.2)
+python -m pipeline.cli enrich-chemspider
 
-# Run fallback identity resolution (M2.1)
-python pipeline/transform/resolve_identity_fallback.py
+# Fetch regulatory data — TSCA, Prop 65, REACH, IARC (M2.3)
+python -m pipeline.cli enrich-regulatory
+
+# Load ECHA bulk export → REACH tonnage/registrant detail (M2.3)
+# Requires: data/raw/echa_registered_substances.xlsx (manual download)
+python -m pipeline.cli enrich-reach
+
+# Launch interactive dashboard
+streamlit run app.py
 ```
 
 ---
@@ -142,9 +154,11 @@ python pipeline/transform/resolve_identity_fallback.py
 
 - **M0 (Data Foundation):** Complete
 - **M1 (Hazard Classification):** Complete
-- **M2.1 (Fallback Identity Resolution):** Complete — 100% match rate
-- **M2.2 (ChemSpider Enrichment):** Not started — awaiting API key test
-- **M2.3 (ECHA REACH Data):** Not started
-- **M2.4 (Dashboard):** Complete — `streamlit run app.py`
+- **M2 (Deep Enrichment & Reporting):** Complete
+  - M2.1 Fallback identity resolution — 100% match rate (147/147)
+  - M2.2 ChemSpider structure enrichment — 12/13 chemicals (SMILES, InChIKey, MW)
+  - M2.3 Regulatory data — TSCA, Prop 65, REACH, IARC, ECHA tonnage
+  - M2.4 Interactive dashboard + 3 cross-source reports
+- **M3:** Not yet defined — see [STATUS.md](STATUS.md)
 
 For detailed task status, see [STATUS.md](STATUS.md) and [TODO.md](TODO.md).
