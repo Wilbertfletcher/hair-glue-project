@@ -25,6 +25,8 @@ CASRN (CAS Registry Number) is present in only 20–80% of rows depending on pro
 
 Workaround / status: Task M0.3 is designed to handle this: implement CAS-first matching where CASRN is available, and defer fallback matching (fuzzy name-based) to M1 or beyond. Do NOT drop rows with null CASRN in M0.2; keep them in the fact table and mark coverage gaps in the identity resolution report.
 
+**RESOLVED: 2026-03-28** — M2.1 fallback resolution achieved 100% match rate. All null-CASRN ingredients resolved via PubChem name search or manual mappings. See `reports/M2.1_fallback_resolution_report.md`.
+
 **Reference:** [TODO.md M0.3 pitfall](TODO.md#03--begin-chemical-identity-resolution-cas-first-matching-size-l-defer-if-casrn-coverage-is-40)
 
 ---

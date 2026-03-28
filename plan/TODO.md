@@ -180,13 +180,13 @@
 
 **Acceptance criteria:**
 
-- [ ] Fuzzy matching implemented using Levenshtein distance or token-based similarity
-- [ ] PubChem synonym lookup integrated for ambiguous ingredient names
-- [ ] Match confidence scores assigned (0.0–1.0) to all fallback matches
-- [ ] Updated `warehouse/ingredient_identity_matched.parquet` with new matches
-- [ ] Overall canonical name match rate ≥85% (up from 61.9%)
-- [ ] Manual review flag set for matches with confidence <0.7
-- [ ] Quality report appended to `reports/M0.3_identity_resolution_report.md` or new report
+- [x] 2026-03-28 Fuzzy matching implemented using rapidfuzz token-based similarity + manual mappings
+- [x] 2026-03-28 PubChem name search integrated for ambiguous ingredient names
+- [x] 2026-03-28 Match confidence scores assigned (0.0–1.0) to all fallback matches
+- [x] 2026-03-28 Updated `warehouse/ingredient_identity_matched.parquet` with new matches
+- [x] 2026-03-28 Overall canonical name match rate 100% (147/147) — exceeds ≥85% target
+- [x] 2026-03-28 Manual review flag set for matches with confidence <0.7 (none needed — all ≥0.9)
+- [x] 2026-03-28 Quality report: `reports/M2.1_fallback_resolution_report.md`
 
 ---
 

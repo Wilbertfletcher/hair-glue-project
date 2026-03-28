@@ -78,6 +78,8 @@ def resolve_unmatched_ingredients(df: pd.DataFrame) -> pd.DataFrame: ...
 
 ### Acceptance Target
 - Overall canonical match rate ≥85% (up from 61.9%)
+
+**Actual (2026-03-28):** Achieved 100% match rate (147/147). Implemented in `pipeline/transform/resolve_identity_fallback.py`. Used PubChem name search for BHA (CAS retry), manual mappings for 6 ingredients (Carbon black, Cocamide DEA, Crystalline silica, Mineral oils, Retinol esters, Talc). Fuzzy matching via `rapidfuzz` installed but not needed — all resolved by exact search or manual mapping. Report: `reports/M2.1_fallback_resolution_report.md`.
 - All fuzzy matches with confidence <0.7 flagged for manual review
 
 ---

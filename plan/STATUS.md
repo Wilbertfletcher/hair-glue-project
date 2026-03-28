@@ -6,7 +6,7 @@
 
 ---
 
-## Last Updated: 2026-03-28 (session 5 — M2 planning, API key security fix)
+## Last Updated: 2026-03-28 (session 6 — M2.1 complete, interactive dashboard built, closing protocol run)
 
 ## Current Milestone: M2 — Deep Chemical Enrichment & Interactive Reporting
 
@@ -32,10 +32,10 @@
 
 ## Where to Start Next Session
 
-1. **Start M2.1:** Implement fallback chemical identity matching (fuzzy name matching for 56 unmatched rows)
+1. ~~**M2.1:** Fallback identity resolution~~ ✅ COMPLETE — 100% match rate (147/147)
 2. **M2.2:** Integrate ChemSpider enrichment with real API key — test with `python -m pipeline.cli enrich-chemspider`
 3. **M2.3:** Investigate ECHA Information on Chemicals API for REACH registration data
-4. **M2.4:** Build interactive dashboard or enhanced reporting
+4. ~~**M2.4:** Interactive dashboard~~ ✅ COMPLETE — Streamlit app at `app.py`, run with `streamlit run app.py`
 
 ---
 
@@ -43,6 +43,23 @@
 
 > Append new entries at the **top** of this list. Do not delete old entries.
 
+
+### 2026-03-28 — M2.1 identity resolution + interactive dashboard (Session 6)
+
+- **M2.1 COMPLETE:** Implemented fallback chemical identity resolution (`pipeline/transform/resolve_identity_fallback.py`)
+  - Resolved all 7 unique unmatched ingredients (56 rows) → 100% match rate (up from 61.9%)
+  - Used PubChem name search + manual mappings for CSCP-specific names
+  - Cocamide DEA, Carbon black, Crystalline silica, Talc, Mineral oils, Retinol esters, BHA all resolved
+  - Report: `reports/M2.1_fallback_resolution_report.md`
+- **Interactive Dashboard COMPLETE:** Built Streamlit web app (`app.py`) with 6 pages:
+  - Overview (exec summary, hazard distribution, category risk)
+  - Product Browser (search, filter by category/hazard, ingredient detail)
+  - Chemical Database (search by CAS/name, hazard profiles, product cross-reference)
+  - Brand Risk Analysis (rankings, sortable metrics)
+  - Category Analysis (comparison charts, recommendations)
+  - Identity Resolution (coverage stats, method breakdown)
+  - Launch: `streamlit run app.py`
+- Installed: `rapidfuzz`, `streamlit`, `plotly`
 
 ### 2026-03-28 — M2 planning, API key security fix (Session 5)
 
@@ -106,17 +123,12 @@
 - ✅ Keyword rules documented: glue, adhesive, bond, bonding, wig, lace, weave, closure, frontal
 
 ### What Needs Clarification (Decisions Pending)
-1. **Precision vs. Recall Trade-off** — Strict keywords (high precision, ~20 products) vs. broader set (reduce false negatives)?
-   - *Source:* checkpoint_1.md feedback request
-   - *Blocker for:* DEC-001 (finalizing keyword rules)
 
-2. **Hair-Glue Product Type Scoping** — Any specific types (lace glue vs. bonding glue) to explicitly include/exclude?
-   - *Source:* checkpoint_1.md feedback request
-   - *Blocker for:* M0.1 (keyword finalization)
+1. ~~**Precision vs. Recall Trade-off**~~ RESOLVED (DEC-001, 2026-03-25) — high-precision conservative keyword list
+2. ~~**Hair-Glue Product Type Scoping**~~ RESOLVED (DEC-001, 2026-03-25) — stakeholder confirmed scope
+3. ~~**CASRN Completeness Strategy**~~ RESOLVED (M2.1, 2026-03-28) — 100% identity resolution achieved via fallback matching
 
-3. **CASRN Completeness Strategy** — Accept partial coverage (<50% in some categories) or defer identity-resolution tasks until we find better sources?
-   - *Source:* Observed in CAS missingness analysis; varies 20–80% across categories
-   - *Blocker for:* M0.3 (chemical identity resolution)
+No open blockers.
 
 ---
 
@@ -128,7 +140,25 @@
 | ---- | --------- | ----- |
 | 0.1 — Finalize hair-glue keyword rules | Done: 2026-03-25 | DEC-001 documented; high-precision approach with conservative keywords; exploration updated |
 | 0.2 — Build product and ingredient dimension tables (Parquet) | Done: 2026-03-25 | 139 products, 16 ingredients, 147 fact rows; 87.8% CASRN coverage; 125 conflicts resolved |
-| 0.3 — Begin chemical identity resolution (CAS-first matching) | Not started | Depends on 0.2 completion |
+| 0.3 — Begin chemical identity resolution (CAS-first matching) | Done: 2026-03-25 | 61.9% match rate via PubChem CAS lookup; 13 canonical chemicals in ref_chemicals.parquet |
+
+### Milestone 1 — Regulatory Classification & Hazard Mapping
+
+| Task | Completed | Notes |
+| ---- | --------- | ----- |
+| 1.1 — Source & integrate hazard/regulatory reference data | Done: 2026-03-27 | PubChem PUG View API; 100% GHS coverage for CAS-matched chemicals |
+| 1.2 — Create hazard classification dimension & risk scoring | Done: 2026-03-27 | 14 GHS classes; 118 HIGH, 3 MEDIUM, 1 LOW, 17 NO_DATA products |
+| 1.3 — Brand/manufacturer market analysis & risk exposure | Done: 2026-03-27 | 67 brands tracked; category hazard analysis for 8 categories |
+| 1.4 — Generate summary reports & dashboards | Done: 2026-03-27 | 3 M1 summary reports + automated generation script |
+
+### Milestone 2 — Deep Chemical Enrichment & Interactive Reporting
+
+| Task | Completed | Notes |
+| ---- | --------- | ----- |
+| 2.1 — Fallback chemical identity resolution | Done: 2026-03-28 | 100% match rate (147/147); PubChem name search + manual mappings for 7 ingredients |
+| 2.2 — ChemSpider live enrichment | Not started | API key in `.env`; framework built in Session 3 |
+| 2.3 — ECHA REACH registration data | Not started | Need ECHA Information on Chemicals API (not Submission Portal) |
+| 2.4 — Interactive dashboard | Done: 2026-03-28 | Streamlit app (`app.py`) with 6 pages; `streamlit run app.py` |
 
 ---
 
