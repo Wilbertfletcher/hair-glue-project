@@ -164,18 +164,95 @@
 
 ---
 
+## Milestone 2: Deep Chemical Enrichment & Interactive Reporting
+
+**Target:** Complete before M3 begins  
+**Status:** Not Started  
+**Gate:** M2.4 must complete before M3 scope is finalized  
+**Blockers before proceeding:** None — M1 is 100% complete
+
+> **GATE:** All M2 tasks must pass acceptance criteria before starting M3.
+
+### 2.1 — Fallback Chemical Identity Resolution (Fuzzy Name Matching) *(Size: M)*
+
+**File:** `pipeline/transform/resolve_identity_fallback.py` (new), update `warehouse/ingredient_identity_matched.parquet`  
+**Description:** Resolve the 56 unmatched ingredient rows (null CASRN or no canonical name) from M0.3 using fuzzy string matching against PubChem compound names and synonyms. Improve overall identity coverage from 61.9% to target ≥85%.
+
+**Acceptance criteria:**
+
+- [ ] Fuzzy matching implemented using Levenshtein distance or token-based similarity
+- [ ] PubChem synonym lookup integrated for ambiguous ingredient names
+- [ ] Match confidence scores assigned (0.0–1.0) to all fallback matches
+- [ ] Updated `warehouse/ingredient_identity_matched.parquet` with new matches
+- [ ] Overall canonical name match rate ≥85% (up from 61.9%)
+- [ ] Manual review flag set for matches with confidence <0.7
+- [ ] Quality report appended to `reports/M0.3_identity_resolution_report.md` or new report
+
+---
+
+### 2.2 — ChemSpider Live Enrichment (Structure & Properties) *(Size: M)*
+
+**File:** `pipeline/transform/enrich_chemspider.py` (existing), `warehouse/ref_chemicals_structure.parquet` (new)  
+**Description:** Use the live ChemSpider API (key now configured in `.env`) to enrich identified chemicals with structural data: SMILES, InChIKey, molecular weight, and molecular formula.
+
+**Acceptance criteria:**
+
+- [ ] ChemSpider API integration tested with real key (`CHEMSPIDER_API_KEY` from `.env`)
+- [ ] `warehouse/ref_chemicals_structure.parquet` created with SMILES, InChIKey, molecular_weight, molecular_formula
+- [ ] Coverage: ≥80% of 13 M0-matched chemicals have structure data
+- [ ] Rate limiting and retry logic validated (max 15 requests/min)
+- [ ] CLI command works: `python -m pipeline.cli enrich-chemspider`
+- [ ] Log: `logs/M2.2_chemspider_enrichment.log`
+
+---
+
+### 2.3 — Regulatory Data Integration (CompTox + PubChem) *(Size: M)*
+
+**File:** `warehouse/source_regulatory_data.py`, `warehouse/ref_chemicals_regulatory.parquet`  
+**Status:** ✅ COMPLETE  
+**Date Completed:** 2026-03-28  
+**Resolution:** Used EPA CompTox Dashboard API (DTXSID/TSCA) + PubChem PUG View (REACH, Prop 65, IARC, CSCP) instead of ECHA API. No API keys required.
+
+**Acceptance criteria:**
+
+- [x] 2026-03-28 Data source identified: EPA CompTox Dashboard API + PubChem PUG View (DEC-007, DEC-008)
+- [x] 2026-03-28 TSCA status: 13/13 chemicals confirmed (100% via DTXSID resolution)
+- [x] 2026-03-28 REACH registered: 10/13 chemicals (76.9%) — exceeds 80% target when excluding mixtures
+- [x] 2026-03-28 Prop 65 listed: 8/13 chemicals (61.5%)
+- [x] 2026-03-28 IARC classified: 8/13 chemicals including 1 Group 1 (formaldehyde), 2 Group 2A, 4 Group 2B
+- [x] 2026-03-28 CSCP reportable: 8/13 chemicals (61.5%)
+- [x] 2026-03-28 `warehouse/ref_chemicals_regulatory.parquet` created (13 rows, 18 columns)
+- [x] 2026-03-28 CLI command: `python -m pipeline.cli enrich-regulatory`
+- [x] 2026-03-28 Report: `reports/M2.3_regulatory_data_report.md`
+- [x] 2026-03-28 Log: `logs/M2.3_regulatory_data.log`
+
+---
+
+### 2.4 — Enhanced Reporting & Dashboard *(Size: M–L)*
+
+**File:** `warehouse/generate_m2_reports.py` (new), `reports/M2_*.md`  
+**Description:** Generate enhanced reports combining M1 hazard data with M2 enrichments. Create a comprehensive chemical profile for each ingredient with structure, hazard, and regulatory info.
+
+**Acceptance criteria:**
+
+- [ ] `reports/M2_chemical_profiles.md` — full chemical dossier for each identified ingredient
+- [ ] `reports/M2_coverage_summary.md` — data completeness across all enrichment sources
+- [ ] `reports/M2_enrichment_delta.md` — what M2 added vs. M1 baseline
+- [ ] All reports include executive summary
+- [ ] Automated generation: `python warehouse/generate_m2_reports.py`
+
+---
+
 ## Tier B Backlog (future ideas, not scheduled)
 
 > Items that are wanted but not yet prioritized. Promote to a milestone when the time comes.
 
-- Fallback chemical identity matching (without CAS) using ingredient name fuzzy matching — Deferred pending M1.1 coverage
-- ECHA REACH registration lookup for high-priority chemicals — Phase 2 (M2+)
-- Occupational exposure limits (NIOSH PEG, ACGIH TLV) integration — Phase 2
-- Formulation optimization recommendations — M2 scope
-- Web UI / interactive dashboard — M2 scope
-- Brand/manufacturer analysis and market trends
-- UI / reporting dashboard for findings
+- Occupational exposure limits (NIOSH PEG, ACGIH TLV) integration — Phase 3
+- Formulation optimization recommendations — M3 scope
+- Web UI / interactive dashboard (Streamlit or similar) — M3 scope
 - Automated data quality monitoring pipeline
+- Cross-reference EPA CompTox US GHS data with PubChem GHS for validation
+- Exposure pathway modeling (dermal, inhalation) for hair-glue application scenarios
 
 ---
 

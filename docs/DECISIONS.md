@@ -1,7 +1,67 @@
+## DEC-008: M2.3 Regulatory Data Sources — CompTox + PubChem PUG View
+
+**Date:** 2026-03-28  
+**Status:** Implemented  
+**Owner:** Wilbert J Fletcher III
+
+### Problem Statement
+
+M2.3 required regulatory/classification data (TSCA, REACH, Prop 65, IARC) for 13 identified chemicals. The ECHA API was not suitable (DEC-007), and EPA CompTox CTX API v2 requires an API key.
+
+### Decision
+
+Use two free, no-key-required APIs:
+1. **EPA CompTox Dashboard API** (`/dashboard-api/ccdapp1/search/chemical/equal/{casrn}`) — resolves DTXSID, which confirms TSCA inventory listing. 13/13 resolved.
+2. **PubChem PUG View API** — aggregates regulatory data from multiple authoritative sources including REACH, Prop 65, IARC, CSCP, FDA. Fetched via `heading=Regulatory+Information` and `heading=Carcinogen+Classification`.
+
+### Results
+
+| Source | Coverage |
+|--------|----------|
+| TSCA (via DTXSID) | 13/13 (100%) |
+| REACH Registered | 10/13 (76.9%) |
+| Prop 65 | 8/13 (61.5%) |
+| IARC Classification | 8/13 (61.5%) |
+| CSCP Reportable | 8/13 (61.5%) |
+
+### Implementation
+
+- Script: `warehouse/source_regulatory_data.py`
+- Output: `warehouse/ref_chemicals_regulatory.parquet`
+- CLI: `python -m pipeline.cli enrich-regulatory`
+- No API keys required
+
+---
+
+## DEC-007: ECHA API Clarification — Submission vs. Information on Chemicals
+
+**Date:** 2026-03-28  
+**Status:** Decided  
+**Owner:** Wilbert J Fletcher III
+
+### Problem Statement
+
+The ECHA Submission Portal REST API (S2S, swagger at `api.ecs.echa.europa.eu`) was initially considered for retrieving chemical registration and hazard data. Analysis of the swagger spec reveals it is exclusively for **uploading IUCLID dossier files** (PCN/CLP notifications). It does NOT support chemical data lookup, hazard queries, or REACH registration status retrieval.
+
+### Decision
+
+**Do NOT use the ECHA Submission Portal API for M2.3.** Instead, for REACH registration data, investigate:
+1. **ECHA Information on Chemicals** — web interface at `search.echa.europa.eu` (may need structured scraping)
+2. **ECHA bulk data downloads** — Pre-packaged datasets from the ECHA dissemination portal
+3. **ECHA IUCLID public data** — Substance datasets in IUCLID format
+
+### Impact
+
+- `pipeline/extract/echa_reach.py` mock implementation remains valid as a framework
+- API endpoint and response parsing will need to change when a real data source is integrated
+- DEC-005 (ECHA REACH Framework) status unchanged; framework is source-agnostic
+
+---
+
 ## DEC-006: US GHS Hazard Data Integration Approach
 
 **Date:** 2026-03-27  
-**Status:** In Progress  
+**Status:** Partially Resolved (PubChem PUG View used as primary source in M1.1)  
 **Owner:** Wilbert J Fletcher III
 
 ### Problem Statement

@@ -6,21 +6,24 @@
 
 ---
 
-## Last Updated: 2026-03-27 (session 4 — US GHS integration planning, environment cleanup)
+## Last Updated: 2026-03-28 (session 5 — M2 planning, API key security fix)
 
-## Current Milestone: M1 — Regulatory Classification & Hazard Mapping
+## Current Milestone: M2 — Deep Chemical Enrichment & Interactive Reporting
 
 
 ## BLOCKERS & ACTIONS
 
-**1. Hazard Data Source (US GHS):**
-   - US GHS hazard data not natively supported by GHScrunch; requires external dataset (e.g., EPA CompTox Dashboard CSV).
-   - Next step: Download EPA GHS hazard CSV, place in data/raw/, and integrate via custom script.
-   - Optionally, extend GHScrunch or pipeline to parse and join this data.
+**1. ECHA API Clarification:**
+   - The ECHA Submission Portal API (S2S) is for uploading IUCLID dossiers — it is NOT a chemical data lookup API.
+   - For M2, we need the **ECHA CHEM / Information on Chemicals** API (search.echa.europa.eu) instead.
+   - Action: Investigate ECHA CHEM API access or use web scraping fallback.
 
-**2. API Keys for ECHA/ChemSpider:**
-   - ECHA REACH and ChemSpider integrations require API registration for production use. Current implementation uses mock data for development.
-   - Register for API keys and set environment variables: `ECHA_API_KEY`, `CHEMSPIDER_API_KEY`.
+**2. ChemSpider API Key:** ✅ RESOLVED
+   - Key configured in `.env` (gitignored). Hardcoded keys removed from all source files.
+   - Set env var: `export CHEMSPIDER_API_KEY=<your_key>` or use `.env` file.
+
+**3. EPA CompTox US GHS Data:**
+   - US GHS data was bypassed in M1.1 via PubChem PUG View. Consider integrating for M2 cross-validation.
 
 **See:**
 - [DECISIONS.md — DEC-004 ChemSpider Integration](../docs/DECISIONS.md#dec-004-chemspider-api-integration-for-chemical-structure-data)
@@ -29,13 +32,10 @@
 
 ## Where to Start Next Session
 
-1. **HIGH PRIORITY:** Download and integrate US GHS hazard dataset (EPA CompTox CSV or similar)
-   - Place file in data/raw/ (e.g., data/raw/epa_ghs_us.csv)
-   - Write/extend script to join hazard data to chemical dimension by CASRN
-2. Register for ECHA and ChemSpider API keys if not already done
-3. Test ECHA hazard enrichment with real data: `python -m pipeline.cli enrich-hazards`
-4. Test ChemSpider structure enrichment with real data: `python -m pipeline.cli enrich-chemspider`
-5. Proceed to M1.2 (Hazard Classification & Risk Scoring) once hazard data integration is validated
+1. **Start M2.1:** Implement fallback chemical identity matching (fuzzy name matching for 56 unmatched rows)
+2. **M2.2:** Integrate ChemSpider enrichment with real API key — test with `python -m pipeline.cli enrich-chemspider`
+3. **M2.3:** Investigate ECHA Information on Chemicals API for REACH registration data
+4. **M2.4:** Build interactive dashboard or enhanced reporting
 
 ---
 
@@ -43,6 +43,15 @@
 
 > Append new entries at the **top** of this list. Do not delete old entries.
 
+
+### 2026-03-28 — M2 planning, API key security fix (Session 5)
+
+- **SECURITY FIX:** Removed hardcoded ChemSpider API key from `api/chemspider_search.py` and `api/Data_Extraction.ipynb`; moved to `.env` (gitignored)
+- Created `.env.example` template for API key configuration
+- All M0 and M1 milestones confirmed complete
+- Drafted M2 milestone plan: Deep Chemical Enrichment & Interactive Reporting (4 tasks)
+- Created `plan/ROADMAP-M2.md` with detailed specs
+- Clarified ECHA Submission API is NOT suitable for chemical data lookup
 
 ### 2026-03-27 — US GHS integration planning, environment cleanup (Session 4 concluded)
 

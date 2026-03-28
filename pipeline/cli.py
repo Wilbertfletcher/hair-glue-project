@@ -100,6 +100,13 @@ def cmd_enrich_ctx() -> None:
     )
 
 
+def cmd_enrich_regulatory() -> None:
+    """Fetch regulatory data from CompTox + PubChem (TSCA, Prop 65, REACH, IARC)."""
+    import importlib
+    mod = importlib.import_module("warehouse.source_regulatory_data")
+    mod.main()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Hair Glue Project Pipeline")
     subparsers = parser.add_subparsers(
@@ -132,6 +139,12 @@ def main() -> None:
         "enrich-ctx", help="Enrich chemicals with CompTox CTX data"
     )
 
+    # enrich-regulatory command
+    subparsers.add_parser(
+        "enrich-regulatory",
+        help="Fetch regulatory data (TSCA, Prop 65, REACH, IARC) from CompTox + PubChem",
+    )
+
     args = parser.parse_args()
 
     if args.command == "ingest-cscp":
@@ -145,6 +158,8 @@ def main() -> None:
         cmd_enrich_chemspider()
     elif args.command == "enrich-ctx":
         cmd_enrich_ctx()
+    elif args.command == "enrich-regulatory":
+        cmd_enrich_regulatory()
     else:
         parser.print_help()
         sys.exit(1)

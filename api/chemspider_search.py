@@ -19,8 +19,10 @@ def search_compound(name, api_key, order_by="default", order_direction="default"
 
 # Example usage
 if __name__ == "__main__":
-    import pdb; pdb.set_trace()
-    API_KEY = "iGwpOmu4q12AzySgUFcDYaeXFsuUZFNb2ETBzXsy"
+    import os
+    API_KEY = os.environ.get("CHEMSPIDER_API_KEY")
+    if not API_KEY:
+        raise SystemExit("Set CHEMSPIDER_API_KEY environment variable before running.")
     result = search_compound("aspirin", API_KEY)
     for item in result.get("results", []):
         print(item)
