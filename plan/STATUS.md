@@ -6,36 +6,35 @@
 
 ---
 
-## Last Updated: 2026-03-28 (session 6 — M2.1 complete, interactive dashboard built, closing protocol run)
+## Last Updated: 2026-03-28 (session 7 — M2 fully complete, closing protocol run)
 
-## Current Milestone: M2 — Deep Chemical Enrichment & Interactive Reporting
+## Current Milestone: M3 — (To Be Defined)
 
 
 ## BLOCKERS & ACTIONS
 
-**1. ECHA API Clarification:**
-   - The ECHA Submission Portal API (S2S) is for uploading IUCLID dossiers — it is NOT a chemical data lookup API.
-   - For M2, we need the **ECHA CHEM / Information on Chemicals** API (search.echa.europa.eu) instead.
-   - Action: Investigate ECHA CHEM API access or use web scraping fallback.
+No open blockers.
 
-**2. ChemSpider API Key:** ✅ RESOLVED
-   - Key configured in `.env` (gitignored). Hardcoded keys removed from all source files.
-   - Set env var: `export CHEMSPIDER_API_KEY=<your_key>` or use `.env` file.
-
-**3. EPA CompTox US GHS Data:**
-   - US GHS data was bypassed in M1.1 via PubChem PUG View. Consider integrating for M2 cross-validation.
-
-**See:**
-- [DECISIONS.md — DEC-004 ChemSpider Integration](../docs/DECISIONS.md#dec-004-chemspider-api-integration-for-chemical-structure-data)
-- [DECISIONS.md — DEC-005 ECHA REACH API](../docs/DECISIONS.md#dec-005-echa-reach-api-integration-framework)
+**Notes for next session:**
+- ChemSpider API key is in `.env` (gitignored). If working on a new machine,
+  recreate `.env` from `.env.example` and add your key.
+- ECHA bulk export is at `data/raw/echa_registered_substances.xlsx` (gitignored).
+  Re-download from ECHA if stale.
+- Fixed a bug in `pipeline/extract/chemspider.py`: added status polling and
+  corrected double-fetch in `search_by_casrn`. 12/13 chemicals enriched.
 
 
 ## Where to Start Next Session
 
-1. ~~**M2.1:** Fallback identity resolution~~ ✅ COMPLETE — 100% match rate (147/147)
-2. **M2.2:** Integrate ChemSpider enrichment with real API key — test with `python -m pipeline.cli enrich-chemspider`
-3. **M2.3:** Investigate ECHA Information on Chemicals API for REACH registration data
-4. ~~**M2.4:** Interactive dashboard~~ ✅ COMPLETE — Streamlit app at `app.py`, run with `streamlit run app.py`
+**M2 is fully complete.** Define and begin M3.
+
+Suggested M3 themes (confirm with stakeholder):
+1. **Exposure analysis** — link product hazard scores to consumer demographics
+2. **Temporal trends** — track hazard/ingredient changes over CSCP reporting years
+3. **Comparative benchmarking** — compare hair-glue category vs. other cosmetic categories
+4. **Public-facing report** — executive summary and policy recommendations
+
+Start by creating `plan/ROADMAP-M3.md` with confirmed scope.
 
 ---
 
@@ -43,6 +42,24 @@
 
 > Append new entries at the **top** of this list. Do not delete old entries.
 
+
+### 2026-03-28 — M2 fully complete (Session 7)
+
+- **M2.2 COMPLETE:** ChemSpider live enrichment — 12/13 chemicals enriched
+  (SMILES, InChIKey, molecular formula, molecular weight, ChemSpider ID).
+  Fixed status-polling bug in `pipeline/extract/chemspider.py`.
+- **M2.3 REACH detail COMPLETE:** ECHA registered substances bulk export
+  loaded via `pipeline/extract/echa_reach.py`. 12/14 chemicals matched.
+  Output: `warehouse/ref_chemicals_reach.parquet`. Decision: DEC-009.
+- **M2.4 Enhanced Reports COMPLETE:** Three cross-source reports generated
+  by `warehouse/generate_m2_reports.py`:
+  - `reports/M2_chemical_profiles.md`
+  - `reports/M2_coverage_summary.md`
+  - `reports/M2_enrichment_delta.md`
+- Installed: `openpyxl`, `pandas`, `pyarrow`, `duckdb`, `requests`,
+  `python-dotenv`, `rapidfuzz`, `streamlit`, `plotly` into `.venv`
+- Fixed PROJECT_OVERVIEW.md to reflect correct Windows venv activation
+  and all current files/scripts
 
 ### 2026-03-28 — M2.1 identity resolution + interactive dashboard (Session 6)
 
@@ -156,9 +173,10 @@ No open blockers.
 | Task | Completed | Notes |
 | ---- | --------- | ----- |
 | 2.1 — Fallback chemical identity resolution | Done: 2026-03-28 | 100% match rate (147/147); PubChem name search + manual mappings for 7 ingredients |
-| 2.2 — ChemSpider live enrichment | Not started | API key in `.env`; framework built in Session 3 |
-| 2.3 — ECHA REACH registration data | Not started | Need ECHA Information on Chemicals API (not Submission Portal) |
+| 2.2 — ChemSpider live enrichment | Done: 2026-03-28 | 12/13 chemicals enriched; fixed status-polling bug in chemspider.py |
+| 2.3 — ECHA REACH registration data | Done: 2026-03-28 | ECHA bulk export approach (DEC-009); 12/14 matched; `ref_chemicals_reach.parquet` |
 | 2.4 — Interactive dashboard | Done: 2026-03-28 | Streamlit app (`app.py`) with 6 pages; `streamlit run app.py` |
+| 2.4 — Enhanced reports | Done: 2026-03-28 | M2_chemical_profiles, M2_coverage_summary, M2_enrichment_delta |
 
 ---
 

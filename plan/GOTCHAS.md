@@ -1,3 +1,27 @@
+### ECHA REACH Detailed Data Requires a Manual Bulk Download (M2.3)
+
+The IUCLID Public REST API is **not** a cloud API — it requires a local
+IUCLID 6 installation. The ECHA Submission Portal API is for dossier
+uploads only. Neither is usable for chemical data lookup (see DEC-007,
+DEC-009).
+
+The correct source for REACH registration detail (tonnage band, registrant
+count, registration type) is the **ECHA Registered Substances bulk export**:
+
+1. Go to:
+   https://echa.europa.eu/en/information-on-chemicals/registered-substances
+2. Click **"Export"** (top-right of the table) → choose Excel (.xlsx)
+3. Save to `data/raw/echa_registered_substances.xlsx`
+4. Run: `python -m pipeline.cli enrich-reach`
+
+The file is large (~24 000+ substances). It is gitignored. Re-download
+periodically to pick up new registrations.
+
+**Reference:** DEC-009, `pipeline/extract/echa_reach.py`,
+`warehouse/source_reach_detail.py`
+
+---
+
 ### US GHS Hazard Data Integration (EPA CompTox, GHScrunch)
 
 US GHS hazard data is not natively supported by GHScrunch. The tool only processes Japan, Korea, and New Zealand government datasets. For US hazard data, an external dataset (e.g., EPA CompTox Dashboard CSV) must be downloaded and integrated via a custom script or pipeline extension. GHScrunch may be extended, but is not plug-and-play for US data.

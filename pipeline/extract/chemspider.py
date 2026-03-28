@@ -65,8 +65,16 @@ class ChemSpiderAPI:
             if not query_id:
                 return None
 
-            # Step 2: Get search results (compound IDs)
-            time.sleep(1)  # Brief delay for processing
+            # Step 2: Poll status until Complete (max 10s)
+            for _ in range(10):
+                time.sleep(1)
+                status_url = f"{self.BASE_URL}/filter/{query_id}/status"
+                status_resp = self.session.get(status_url, timeout=15)
+                status_resp.raise_for_status()
+                if status_resp.json().get('status') == 'Complete':
+                    break
+
+            # Step 3: Get search results (compound IDs)
             results_url = f"{self.BASE_URL}/filter/{query_id}/results"
             results_response = self.session.get(results_url, timeout=30)
             results_response.raise_for_status()
@@ -109,12 +117,12 @@ class ChemSpiderAPI:
             try:
                 results = self.search_by_name(casrn)
                 if results and len(results) > 0:
-                    compound_id = results[0].get('id')
-                    if compound_id:
-                        return self.get_compound_details(compound_id)
+                    # search_by_name already returns full compound details
+                    result = results[0]
+                    result['casrn'] = casrn
+                    return result
             except Exception as e:
                 print(f"CASRN search failed for '{casrn}': {e}")
-                # Fall back to mock data if API fails
                 return self._get_mock_data(casrn)
         else:
             # No API key - use mock data

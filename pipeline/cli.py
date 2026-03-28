@@ -101,9 +101,20 @@ def cmd_enrich_ctx() -> None:
 
 
 def cmd_enrich_regulatory() -> None:
-    """Fetch regulatory data from CompTox + PubChem (TSCA, Prop 65, REACH, IARC)."""
+    """Fetch regulatory data (TSCA, Prop 65, REACH, IARC) via public APIs."""
     import importlib
     mod = importlib.import_module("warehouse.source_regulatory_data")
+    mod.main()
+
+
+def cmd_enrich_reach(echa_file: str) -> None:
+    """Load ECHA bulk export and produce ref_chemicals_reach.parquet."""
+    import importlib
+    mod = importlib.import_module("warehouse.source_reach_detail")
+    # Override the default file path if the user supplied one
+    if echa_file:
+        from pathlib import Path
+        mod.ECHA_FILE = Path(echa_file)
     mod.main()
 
 
@@ -142,7 +153,21 @@ def main() -> None:
     # enrich-regulatory command
     subparsers.add_parser(
         "enrich-regulatory",
-        help="Fetch regulatory data (TSCA, Prop 65, REACH, IARC) from CompTox + PubChem",
+        help="Fetch regulatory data (TSCA, Prop 65, REACH, IARC)",
+    )
+
+    # enrich-reach command
+    reach_parser = subparsers.add_parser(
+        "enrich-reach",
+        help="Load ECHA bulk export → ref_chemicals_reach.parquet",
+    )
+    reach_parser.add_argument(
+        "--file",
+        default="",
+        help=(
+            "Path to ECHA registered substances file "
+            "(default: data/raw/echa_registered_substances.xlsx)"
+        ),
     )
 
     args = parser.parse_args()
@@ -160,6 +185,8 @@ def main() -> None:
         cmd_enrich_ctx()
     elif args.command == "enrich-regulatory":
         cmd_enrich_regulatory()
+    elif args.command == "enrich-reach":
+        cmd_enrich_reach(args.file)
     else:
         parser.print_help()
         sys.exit(1)

@@ -1,257 +1,199 @@
 """
-ECHA REACH API Client for Hazard Data
+ECHA REACH Registered Substances — Bulk File Loader
 
-Fetches hazard classifications from ECHA REACH database using CASRN.
+Reads the ECHA Registered Substances export (Excel or CSV) and extracts
+tonnage band, registration type, and registrant count for a given set of
+CAS numbers.
 
-NOTE: ECHA REACH API requires registration and API keys for programmatic access.
-This implementation provides a framework that can be activated once proper credentials are obtained.
+How to obtain the source file
+------------------------------
+1. Go to ECHA Information on Chemicals:
+   https://echa.europa.eu/en/information-on-chemicals/registered-substances
+2. Click "Export" (top-right of the table) → download Excel (.xlsx)
+3. Save to:  data/raw/echa_registered_substances.xlsx
 
-Alternative approaches:
-1. Download ECHA REACH datasets from https://echa.europa.eu/en/information-on-chemicals
-2. Use local CSV/Parquet files with pre-downloaded hazard data
-3. Use alternative sources like ChemSpider or paid hazard databases
+ECHA updates this export periodically. Re-download to refresh the data.
 
-For production use, register at ECHA for API access.
+Column names in the export (as of early 2024):
+  - "EC Number"
+  - "CAS Number"
+  - "Substance Name"
+  - "Registration type"        (Full / Intermediate / PPORD)
+  - "Tonnage band"             (e.g. "1 - 10 t", "100 - 1 000 t")
+  - "Number of registrations"  (integer)
+  - "Last updated"
 """
 
-import requests
-import pandas as pd
-import time
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Optional, Dict, Any
-import json
+from typing import Optional
+
+import pandas as pd
 
 
-class ECHARearchAPI:
+# ---------------------------------------------------------------------------
+# Column-name aliases — ECHA has changed column names across export versions
+# ---------------------------------------------------------------------------
+
+_CAS_ALIASES = ["CAS Number", "CAS No.", "CAS no", "casrn", "CAS"]
+_EC_ALIASES = ["EC Number", "EC No.", "EC no", "ecnumber"]
+_NAME_ALIASES = ["Substance Name", "Substance name", "Name", "name"]
+_TYPE_ALIASES = ["Registration type", "Registration Type", "Reg. type"]
+_TONNAGE_ALIASES = [
+    "Tonnage band", "Tonnage Band", "Tonnage", "tonnage_band",
+]
+_COUNT_ALIASES = [
+    "Number of registrations",
+    "No. of registrations",
+    "Registrations",
+    "registrant_count",
+]
+_UPDATED_ALIASES = ["Last updated", "Last Updated", "Update date"]
+
+_ECHA_DOWNLOAD_URL = (
+    "https://echa.europa.eu/en/information-on-chemicals/registered-substances"
+)
+
+
+def _pick_col(df: pd.DataFrame, aliases: list[str]) -> Optional[str]:
+    """Return the first alias that exists as a column, or None."""
+    for alias in aliases:
+        if alias in df.columns:
+            return alias
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def load_echa_registered_substances(
+    file_path: str | Path,
+) -> pd.DataFrame:
     """
-    Client for ECHA REACH API to fetch chemical hazard data.
+    Load the ECHA registered substances export; return normalised DataFrame.
 
-    IMPORTANT: This requires ECHA API registration and credentials.
-    Current implementation returns mock data for testing.
-    """
+    Output columns:
+        casrn, ec_number, substance_name, registration_type,
+        tonnage_band, registrant_count, last_updated, data_source
 
-    BASE_URL = "https://echa.europa.eu/chem/api"
+    Parameters
+    ----------
+    file_path : str or Path
+        Path to the ECHA export file (.xlsx or .csv).
 
-    def __init__(self, api_key: Optional[str] = None):
-        self.session = requests.Session()
-        self.api_key = api_key
-        headers = {
-            'User-Agent': 'HairGlueProject/1.0 (research@hairglue.org)',
-            'Accept': 'application/json'
-        }
-        if api_key:
-            headers['Authorization'] = f'Bearer {api_key}'
-        self.session.headers.update(headers)
-
-    def search_by_casrn(self, casrn: str) -> Optional[Dict[str, Any]]:
-        """
-        Search for a chemical by CASRN in ECHA REACH database.
-
-        Returns chemical data including hazard classifications if found.
-        """
-        if not casrn or pd.isna(casrn):
-            return None
-
-        # Clean CASRN
-        casrn = str(casrn).strip()
-
-        # For now, return mock data since API requires registration
-        # TODO: Replace with actual API call once credentials are obtained
-        return self._get_mock_hazard_data(casrn)
-
-        # Actual API call (uncomment when API access is available):
-        """
-        try:
-            url = f"{self.BASE_URL}/search"
-            params = {
-                'cas': casrn,
-                'format': 'json'
-            }
-
-            response = self.session.get(url, params=params, timeout=30)
-            response.raise_for_status()
-
-            data = response.json()
-
-            if data and len(data) > 0:
-                substance = data[0]
-                return self._extract_hazard_data(substance)
-
-        except requests.RequestException as e:
-            print(f"API request failed for CASRN {casrn}: {e}")
-        except json.JSONDecodeError as e:
-            print(f"JSON parsing failed for CASRN {casrn}: {e}")
-
-        return None
-        """
-
-    def _get_mock_hazard_data(self, casrn: str) -> Dict[str, Any]:
-        """
-        Return mock hazard data for testing purposes.
-        Replace with actual API extraction when available.
-        """
-        # Mock data for common chemicals
-        mock_data = {
-            '7732-18-5': {  # Water
-                'casrn': '7732-18-5',
-                'ec_number': '231-791-2',
-                'substance_name': 'Water',
-                'hazard_classes': '',
-                'hazard_statements': '',
-                'precautionary_statements': '',
-                'signal_word': None,
-                'ghs_classes': '',
-                'data_source': 'ECHA_REACH_MOCK',
-                'last_updated': pd.Timestamp.now().isoformat()
-            },
-            '64-17-5': {  # Ethanol
-                'casrn': '64-17-5',
-                'ec_number': '200-578-6',
-                'substance_name': 'Ethanol',
-                'hazard_classes': 'Flammable liquids',
-                'hazard_statements': 'H225',
-                'precautionary_statements': 'P210,P233,P240,P241,P242,P243',
-                'signal_word': 'Danger',
-                'ghs_classes': 'Flammable liquid Category 2',
-                'data_source': 'ECHA_REACH_MOCK',
-                'last_updated': pd.Timestamp.now().isoformat()
-            }
-        }
-
-        return mock_data.get(casrn, {
-            'casrn': casrn,
-            'ec_number': None,
-            'substance_name': None,
-            'hazard_classes': None,
-            'hazard_statements': None,
-            'precautionary_statements': None,
-            'signal_word': None,
-            'ghs_classes': None,
-            'data_source': 'ECHA_REACH_NOT_FOUND',
-            'last_updated': pd.Timestamp.now().isoformat()
-        })
-
-    def _extract_hazard_data(self, substance: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Extract hazard classification data from ECHA substance record.
-        This is the actual extraction logic for when API access is available.
-        """
-        hazard_data = {
-            'casrn': substance.get('casNumber'),
-            'ec_number': substance.get('ecNumber'),
-            'substance_name': substance.get('name'),
-            'hazard_classes': [],
-            'hazard_statements': [],
-            'precautionary_statements': [],
-            'signal_word': None,
-            'ghs_classes': [],
-            'data_source': 'ECHA_REACH',
-            'last_updated': pd.Timestamp.now().isoformat()
-        }
-
-        # Extract hazard classifications from API response
-        # This will need to be adjusted based on actual API response structure
-        classifications = substance.get('hazardClassifications', [])
-
-        for classification in classifications:
-            if classification.get('classificationType') == 'GHS':
-                hazard_class = classification.get('hazardClass')
-                if hazard_class:
-                    hazard_data['ghs_classes'].append(hazard_class)
-
-                statements = classification.get('hazardStatements', [])
-                for stmt in statements:
-                    if stmt.get('code'):
-                        hazard_data['hazard_statements'].append(stmt['code'])
-
-                prec_statements = classification.get('precautionaryStatements', [])
-                for stmt in prec_statements:
-                    if stmt.get('code'):
-                        hazard_data['precautionary_statements'].append(stmt['code'])
-
-                if classification.get('signalWord') and not hazard_data['signal_word']:
-                    hazard_data['signal_word'] = classification['signalWord']
-
-        # Convert lists to strings
-        hazard_data['ghs_classes'] = ','.join(hazard_data['ghs_classes'])
-        hazard_data['hazard_statements'] = ','.join(hazard_data['hazard_statements'])
-        hazard_data['precautionary_statements'] = ','.join(hazard_data['precautionary_statements'])
-
-        return hazard_data
-
-    def fetch_hazards_batch(self, casrns: list, batch_size: int = 10, delay: float = 1.0) -> pd.DataFrame:
-        """
-        Fetch hazard data for a batch of CASRNs with rate limiting.
-        """
-        results = []
-
-        for i in range(0, len(casrns), batch_size):
-            batch = casrns[i:i + batch_size]
-
-            for casrn in batch:
-                print(f"Fetching hazard data for CASRN: {casrn}")
-                hazard_data = self.search_by_casrn(casrn)
-                results.append(hazard_data)
-
-                # Rate limiting
-                time.sleep(delay)
-
-        return pd.DataFrame(results)
-
-
-def load_echa_hazards_from_file(file_path: str) -> pd.DataFrame:
-    """
-    Load hazard data from a local ECHA data file (CSV/Parquet).
-
-    This is an alternative to API access when bulk data is downloaded.
+    Raises
+    ------
+    FileNotFoundError
+        If the file does not exist.
+    ValueError
+        If required columns cannot be identified or format unsupported.
     """
     path = Path(file_path)
     if not path.exists():
-        raise FileNotFoundError(f"ECHA data file not found: {file_path}")
+        raise FileNotFoundError(
+            f"ECHA registered substances file not found: {path}\n\n"
+            f"Download it from:\n  {_ECHA_DOWNLOAD_URL}\n"
+            "and save it to data/raw/echa_registered_substances.xlsx"
+        )
 
-    if path.suffix == '.csv':
-        df = pd.read_csv(path)
-    elif path.suffix == '.parquet':
-        df = pd.read_parquet(path)
+    if path.suffix in (".xlsx", ".xls"):
+        raw = pd.read_excel(path, dtype=str)
+    elif path.suffix == ".csv":
+        raw = pd.read_csv(path, dtype=str)
     else:
-        raise ValueError(f"Unsupported file format: {path.suffix}")
+        raise ValueError(
+            f"Unsupported file format: {path.suffix}. Expected .xlsx or .csv"
+        )
 
-    # Standardize column names
-    column_mapping = {
-        'CAS Number': 'casrn',
-        'EC Number': 'ec_number',
-        'Substance Name': 'substance_name',
-        'GHS Hazard Classes': 'ghs_classes',
-        'Hazard Statements': 'hazard_statements',
-        'Precautionary Statements': 'precautionary_statements',
-        'Signal Word': 'signal_word'
-    }
+    raw.columns = [str(c).strip() for c in raw.columns]
 
-    df = df.rename(columns=column_mapping)
+    cas_col = _pick_col(raw, _CAS_ALIASES)
+    ec_col = _pick_col(raw, _EC_ALIASES)
+    name_col = _pick_col(raw, _NAME_ALIASES)
+    type_col = _pick_col(raw, _TYPE_ALIASES)
+    tonnage_col = _pick_col(raw, _TONNAGE_ALIASES)
+    count_col = _pick_col(raw, _COUNT_ALIASES)
+    updated_col = _pick_col(raw, _UPDATED_ALIASES)
 
-    # Add metadata
-    df['data_source'] = 'ECHA_REACH_FILE'
-    df['last_updated'] = pd.Timestamp.now().isoformat()
+    if cas_col is None:
+        raise ValueError(
+            "Cannot find CAS Number column. "
+            f"Found columns: {list(raw.columns)}"
+        )
 
-    return df[['casrn', 'ec_number', 'substance_name', 'ghs_classes',
-               'hazard_statements', 'precautionary_statements', 'signal_word',
-               'data_source', 'last_updated']]
+    out = pd.DataFrame()
+    out["casrn"] = raw[cas_col].str.strip()
+    out["ec_number"] = raw[ec_col].str.strip() if ec_col else None
+    out["substance_name"] = raw[name_col].str.strip() if name_col else None
+    out["registration_type"] = (
+        raw[type_col].str.strip() if type_col else None
+    )
+    out["tonnage_band"] = (
+        raw[tonnage_col].str.strip() if tonnage_col else None
+    )
+    out["registrant_count"] = (
+        pd.to_numeric(raw[count_col], errors="coerce").astype("Int64")
+        if count_col else None
+    )
+    out["last_updated"] = (
+        raw[updated_col].str.strip() if updated_col else None
+    )
+    out["data_source"] = "ECHA_registered_substances"
+
+    out = out[out["casrn"].notna() & (out["casrn"] != "")]
+    return out.reset_index(drop=True)
 
 
-def test_echa_api():
-    """Test the ECHA API with a known CASRN."""
-    api = ECHARearchAPI()
+def filter_by_casrns(
+    echa_df: pd.DataFrame,
+    casrns: list[str],
+) -> pd.DataFrame:
+    """
+    Filter the full ECHA table to only the CAS numbers we care about.
 
-    # Test with water (should have minimal hazards)
-    test_casrn = "7732-18-5"
-    result = api.search_by_casrn(test_casrn)
+    Returns one row per input CAS number. Unmatched CAS numbers get a row
+    with reach_registered=False and all ECHA fields set to None.
 
-    if result:
-        print(f"Found data for {test_casrn}:")
-        print(json.dumps(result, indent=2))
+    Parameters
+    ----------
+    echa_df : DataFrame
+        Output of load_echa_registered_substances().
+    casrns : list[str]
+        CAS numbers to keep.
+    """
+    target = {c.strip() for c in casrns if c}
+    matched = echa_df[echa_df["casrn"].isin(target)].copy()
+
+    # Multiple registrations per CAS: keep the row with the highest count
+    # (typically the "Full" registration entry).
+    matched = (
+        matched
+        .sort_values(
+            "registrant_count", ascending=False, na_position="last",
+        )
+        .drop_duplicates(subset="casrn", keep="first")
+    )
+
+    matched_cas = set(matched["casrn"].tolist())
+    missing = [c for c in target if c not in matched_cas]
+
+    if missing:
+        no_match = pd.DataFrame({
+            "casrn": missing,
+            "ec_number": None,
+            "substance_name": None,
+            "registration_type": None,
+            "tonnage_band": None,
+            "registrant_count": None,
+            "last_updated": None,
+            "data_source": "ECHA_registered_substances",
+            "reach_registered": False,
+        })
+        matched["reach_registered"] = True
+        matched = pd.concat([matched, no_match], ignore_index=True)
     else:
-        print(f"No data found for {test_casrn}")
+        matched["reach_registered"] = True
 
-
-if __name__ == "__main__":
-    test_echa_api()
+    return matched.reset_index(drop=True)

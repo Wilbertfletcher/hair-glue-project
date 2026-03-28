@@ -31,6 +31,8 @@ def enrich_chemicals_with_chemspider(dim_chemical_path: str, output_path: str) -
 
     # Initialize ChemSpider API client
     import os
+    from dotenv import load_dotenv
+    load_dotenv()
     api_key = os.getenv('CHEMSPIDER_API_KEY')
     api = ChemSpiderAPI(api_key=api_key)
 

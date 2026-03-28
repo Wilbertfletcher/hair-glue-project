@@ -1,3 +1,60 @@
+## DEC-009: ECHA REACH Registration Detail — Bulk Export over IUCLID/API
+
+**Date:** 2026-03-28
+**Status:** Decided
+**Owner:** Wilbert J Fletcher III
+
+### Problem Statement
+
+M2.3 required detailed REACH registration data (tonnage band, registrant
+count, registration type) for our 13 identified chemicals. Three candidate
+approaches were investigated:
+
+1. **ECHA Submission Portal API (S2S)** — for uploading IUCLID dossiers
+   only; cannot look up chemical data. Ruled out in DEC-007.
+2. **IUCLID Public REST API** — requires a local IUCLID 6 installation.
+   Not available as a public cloud endpoint; unsuitable for this project.
+3. **ECHA Registered Substances bulk export** — ECHA publishes a public
+   Excel/CSV of all REACH-registered substances. No auth, no API key,
+   no rate limits. Download once, query locally.
+
+### Decision
+
+Use the **ECHA Registered Substances bulk export** (option 3).
+
+Download URL:
+https://echa.europa.eu/en/information-on-chemicals/registered-substances
+
+Save the file to `data/raw/echa_registered_substances.xlsx` and run:
+
+```bash
+python -m pipeline.cli enrich-reach
+# or with a custom path:
+python -m pipeline.cli enrich-reach --file path/to/file.xlsx
+```
+
+### Output
+
+`warehouse/ref_chemicals_reach.parquet` — one row per chemical with:
+`casrn`, `ec_number`, `substance_name`, `registration_type`,
+`tonnage_band`, `registrant_count`, `last_updated`, `reach_registered`
+
+### Implementation
+
+- Loader: `pipeline/extract/echa_reach.py`
+- Orchestration script: `warehouse/source_reach_detail.py`
+- CLI command: `python -m pipeline.cli enrich-reach`
+- Report: `reports/M2.3_reach_detail_report.md`
+
+### Alternatives Considered
+
+- IUCLID Public REST API: requires local IUCLID 6 install — not viable
+- ECHA CHEM web portal: no documented REST API; scraping is fragile
+- PubChem PUG View: provides boolean `reach_registered` only (already
+  done in DEC-008); does not provide tonnage band or registrant count
+
+---
+
 ## DEC-008: M2.3 Regulatory Data Sources — CompTox + PubChem PUG View
 
 **Date:** 2026-03-28  
