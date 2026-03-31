@@ -75,7 +75,7 @@ def page_overview(data):
             fig = px.pie(flag_counts, values='Count', names='Hazard Flag',
                          color='Hazard Flag', color_discrete_map=color_map)
             fig.update_layout(margin=dict(t=20, b=20))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         with col_right:
             st.subheader("Hazard Score Distribution")
@@ -83,7 +83,7 @@ def page_overview(data):
                                color_discrete_sequence=['#3498db'])
             fig.update_layout(xaxis_title="Hazard Score", yaxis_title="Products",
                               margin=dict(t=20, b=20))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
     # Category analysis
     cats = data["categories"]
@@ -97,7 +97,7 @@ def page_overview(data):
                              'category_raw': 'Category',
                              'pct_high_hazard': '% High Hazard'})
         fig.update_layout(margin=dict(t=20, b=20), height=350)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 
 def page_products(data):
@@ -153,7 +153,7 @@ def page_products(data):
             'category_raw': 'Category', 'hazard_score': 'Hazard Score',
             'hazard_flag': 'Risk Level', 'num_ingredients': '# Ingredients'
         }),
-        use_container_width=True,
+        width='stretch',
         height=400,
     )
 
@@ -185,7 +185,7 @@ def page_products(data):
                 st.markdown("**Ingredients:**")
                 ing_display = prod_ingredients[['ingredient_raw', 'casrn', 'canonical_name', 'match_source']].copy()
                 ing_display.columns = ['Ingredient', 'CAS #', 'Canonical Name', 'Match Source']
-                st.dataframe(ing_display, use_container_width=True, hide_index=True)
+                st.dataframe(ing_display, width='stretch', hide_index=True)
 
 
 def page_chemicals(data):
@@ -233,7 +233,7 @@ def page_chemicals(data):
             'casrn': 'CAS #', 'canonical_name': 'Chemical Name', 'source': 'Source',
             'ghs_hazard_class': 'GHS Hazard Classes', 'ghs_signal_word': 'Signal Word'
         }),
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
     )
 
@@ -268,7 +268,7 @@ def page_chemicals(data):
                         product_list[['product_name', 'brand', 'category_raw']].rename(columns={
                             'product_name': 'Product', 'brand': 'Brand', 'category_raw': 'Category'
                         }),
-                        use_container_width=True, hide_index=True
+                        width='stretch', hide_index=True
                     )
 
 
@@ -303,7 +303,7 @@ def page_brands(data):
                  labels={'brand': 'Brand', sort_by: sort_by.replace('_', ' ').title(),
                          'max_hazard_flag': 'Max Risk'})
     fig.update_layout(margin=dict(t=20, b=20), height=max(400, top_n * 22))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # Detailed table
     st.subheader("Full Brand Data")
@@ -314,7 +314,7 @@ def page_brands(data):
             'total_repro_products': 'Repro Hazard', 'total_carc_products': 'Carcinogen',
             'max_hazard_flag': 'Risk Level'
         }).drop(columns=['brand_id'], errors='ignore'),
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
     )
 
@@ -342,7 +342,7 @@ def page_categories(data):
     ))
     fig.update_layout(barmode='group', xaxis_tickangle=-45,
                       margin=dict(t=20, b=100), height=400)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # Risk breakdown
     col_l, col_r = st.columns(2)
@@ -353,7 +353,7 @@ def page_categories(data):
                       color='pct_high_hazard', color_continuous_scale='RdYlGn_r',
                       labels={'pct_high_hazard': '% High Hazard', 'category_raw': ''})
         fig2.update_layout(margin=dict(t=20, b=20), showlegend=False, height=300)
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width='stretch')
 
     with col_r:
         st.subheader("% Carcinogen by Category")
@@ -362,7 +362,7 @@ def page_categories(data):
                       color='pct_carcinogen', color_continuous_scale='Reds',
                       labels={'pct_carcinogen': '% Carcinogen', 'category_raw': ''})
         fig3.update_layout(margin=dict(t=20, b=20), showlegend=False, height=300)
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig3, width='stretch')
 
     # Recommendations table
     st.subheader("Category Recommendations")
@@ -372,7 +372,7 @@ def page_categories(data):
             'avg_hazard_score': 'Avg Score', 'pct_high_hazard': '% High',
             'recommendation': 'Recommendation'
         }),
-        use_container_width=True, hide_index=True
+        width='stretch', hide_index=True
     )
 
 
@@ -400,7 +400,7 @@ def page_identity(data):
     source_counts.columns = ['Method', 'Count']
     fig = px.pie(source_counts, values='Count', names='Method')
     fig.update_layout(margin=dict(t=20, b=20))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # By category
     st.subheader("Match Rate by Category")
@@ -413,7 +413,7 @@ def page_identity(data):
                   orientation='h', color='rate', color_continuous_scale='Greens',
                   labels={'rate': 'Match Rate (%)', 'category_raw': 'Category'})
     fig2.update_layout(margin=dict(t=20, b=20), height=300, showlegend=False)
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, width='stretch')
 
     # Unresolved ingredients
     unresolved = identity[identity['canonical_name'].isna()]
@@ -423,7 +423,7 @@ def page_identity(data):
             unresolved[['ingredient_raw', 'casrn', 'match_source']].drop_duplicates().rename(columns={
                 'ingredient_raw': 'Ingredient', 'casrn': 'CAS #', 'match_source': 'Status'
             }),
-            use_container_width=True, hide_index=True
+            width='stretch', hide_index=True
         )
     else:
         st.success("All ingredients resolved!")
@@ -463,6 +463,10 @@ st.sidebar.caption(f"Products: {len(data['products'])} | Chemicals: {len(data['r
 try:
     pages[page](data)
 except Exception as e:
+    # Don't swallow Streamlit's internal control-flow exceptions
+    # (RerunException, StopException) — they must propagate or the page goes blank.
+    if "Rerun" in type(e).__name__ or "Stop" in type(e).__name__:
+        raise
     st.error(f"Error loading page: {e}")
     import traceback
     st.code(traceback.format_exc())
