@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python.exe -c \"from dotenv import load_dotenv; load_dotenv\\(\\); import os; print\\('Key loaded:', bool\\(os.getenv\\('CTX_API_KEY'\\)\\)\\)\")"
+    ]
+  }
+}

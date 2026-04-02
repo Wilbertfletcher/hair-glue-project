@@ -6,9 +6,9 @@
 
 ---
 
-## Last Updated: 2026-03-28 (session 7 — M2 fully complete, closing protocol run)
+## Last Updated: 2026-04-02 (session 8 — dashboard overhaul + M3 roadmap defined)
 
-## Current Milestone: M3 — (To Be Defined)
+## Current Milestone: M3 — EPA Data Integration, Exposure Analysis & Public Report
 
 
 ## BLOCKERS & ACTIONS
@@ -26,15 +26,16 @@ No open blockers.
 
 ## Where to Start Next Session
 
-**M2 is fully complete.** Define and begin M3.
+**M3 is defined.** Begin M3.1a — CompTox chemical detail enrichment.
 
-Suggested M3 themes (confirm with stakeholder):
-1. **Exposure analysis** — link product hazard scores to consumer demographics
-2. **Temporal trends** — track hazard/ingredient changes over CSCP reporting years
-3. **Comparative benchmarking** — compare hair-glue category vs. other cosmetic categories
-4. **Public-facing report** — executive summary and policy recommendations
+Exact starting point:
+1. Apply for free EPA CCTE API key at `https://api-ccte.epa.gov/` (DEC-011)
+2. Create `pipeline/extract/ccte_api.py` — CCTE API client
+3. Create `warehouse/source_epa_data.py` — orchestrates M3.1a–c
+4. Target: populate `warehouse/ref_chemicals_comptox.parquet` and
+   `warehouse/ref_chemicals_toxcast.parquet`
 
-Start by creating `plan/ROADMAP-M3.md` with confirmed scope.
+See `plan/ROADMAP-M3.md` for full spec.
 
 ---
 
@@ -42,6 +43,28 @@ Start by creating `plan/ROADMAP-M3.md` with confirmed scope.
 
 > Append new entries at the **top** of this list. Do not delete old entries.
 
+
+### 2026-04-02 — Dashboard overhaul + M3 roadmap (Session 8)
+
+- **Dashboard (app.py) OVERHAULED:**
+  - Added page summaries (`st.info()`) on every page explaining purpose in plain language
+  - All technical jargon replaced with 8th-grade terms (Carc → Cancer-Causing Chemical,
+    GHS Signal Word → Warning Strength, STOT-RE → Organ Damage from Repeated Exposure, etc.)
+  - Added legends to every chart (pie slices labeled, color scales titled, bar charts have
+    legend panels)
+  - Renamed "Identity Resolution" page → "Chemical Name Matching"
+  - Added sidebar danger level guide (🔴🟠🟢⚫)
+  - Added `plain_hazard_class()` helper that translates GHS codes to plain English
+  - Added `GLOSSARY` dict rendered on Overview page
+  - Added `regulatory` parquet to `load_data()` for EPA tools page
+- **NEW PAGE: "EPA Research Tools"** — explains ToxCast, GenRA, CompTox, ChemExpo,
+  Cheminformatics Modules in plain language with metrics, live CompTox API demo
+  (fetch by DTXSID), and a priority integration roadmap table
+- **M3 ROADMAP DEFINED:** `plan/ROADMAP-M3.md` created with 4 tasks:
+  - M3.1: EPA Data Integration (CompTox, ToxCast, ChemExpo, OPERA)
+  - M3.2: Demographics & Exposure Analysis
+  - M3.3: Comparative Benchmarking vs. other cosmetics
+  - M3.4: Public-facing executive report + policy recommendations
 
 ### 2026-03-28 — M2 fully complete (Session 7)
 
