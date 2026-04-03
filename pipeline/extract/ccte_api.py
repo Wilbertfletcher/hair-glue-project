@@ -385,6 +385,67 @@ def get_chemexpo_batch(
     return results
 
 
+# ── M3.1d: EPA IRIS — Federal reference doses & cancer data ──────────────
+
+def get_iris(dtxsid: str) -> Dict[str, Any]:
+    """
+    Fetch EPA IRIS (Integrated Risk Information System) data for one DTXSID.
+
+    IRIS is the federal standard for chemical risk — used by EPA, FDA, and
+    OSHA to set safety limits. Only ~600 chemicals have IRIS assessments,
+    so most will return empty.
+
+    Returns a dict with:
+      dtxsid, has_iris, rfd_chronic, rfc_chronic, tumor_sites,
+      critical_effects, last_revised, iris_url
+    """
+    key = _cache_key("iris", dtxsid)
+    cached = _load_cache(key)
+    if cached is not None:
+        return cached
+
+    result: Dict[str, Any] = {
+        "dtxsid": dtxsid,
+        "has_iris": False,
+        "rfd_chronic": None,
+        "rfc_chronic": None,
+        "tumor_sites": None,
+        "critical_effects": None,
+        "last_revised": None,
+        "iris_url": None,
+    }
+
+    try:
+        haz = _make_hazard()
+        df = haz.search_iris(dtxsid=dtxsid)
+        if df is not None and len(df) > 0:
+            row = df.iloc[0]
+            result["has_iris"] = True
+            result["rfd_chronic"] = _na_str(_get(row, "rfdChronic"))
+            result["rfc_chronic"] = _na_str(_get(row, "rfcChronic"))
+            result["tumor_sites"] = _na_str(_get(row, "tumorSite"))
+            result["critical_effects"] = _na_str(
+                _get(row, "criticalEffectsSystems")
+            )
+            result["last_revised"] = _na_str(
+                _get(row, "lastSignificantRevision")
+            )
+            result["iris_url"] = _na_str(_get(row, "irisUrl"))
+            logger.info("IRIS: %s — data found", dtxsid)
+        else:
+            logger.info("IRIS: %s — no assessment", dtxsid)
+    except Exception as exc:
+        logger.error("IRIS failed for %s: %s", dtxsid, exc)
+
+    _save_cache(key, result)
+    return result
+
+
+def get_iris_batch(dtxsid_list: List[str]) -> List[Dict[str, Any]]:
+    """Fetch IRIS data for a list of DTXSIDs."""
+    return [get_iris(dtxsid) for dtxsid in dtxsid_list]
+
+
 # ── Bonus: Hazard / ToxValDB cancer search ────────────────────────────────
 
 def get_hazard_summary(dtxsid: str) -> Dict[str, Any]:
@@ -432,7 +493,7 @@ def get_hazard_summary(dtxsid: str) -> Dict[str, Any]:
     return result
 
 
-# ── Internal helper ───────────────────────────────────────────────────────
+# ── Internal helpers ──────────────────────────────────────────────────────
 
 def _get(row, key: str):
     """Safe getter for both dict-like and Series rows."""
@@ -440,3 +501,16 @@ def _get(row, key: str):
         return row[key] if key in row else None
     except Exception:
         return None
+
+
+def _na_str(value) -> str | None:
+    """Convert pandas NA / NAType to None so json.dump doesn't choke."""
+    if value is None:
+        return None
+    try:
+        import pandas as pd
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return str(value) if str(value) not in ("nan", "None", "<NA>") else None

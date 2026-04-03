@@ -26,6 +26,7 @@ from pipeline.extract.ccte_api import (
     get_chemical_details_batch,
     get_bioactivity_batch,
     get_chemexpo_batch,
+    get_iris_batch,
 )
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -144,12 +145,35 @@ def run_chemexpo(dtxsid_list: list, casrn_map: dict) -> pd.DataFrame:
     return df
 
 
+# ── M3.1d: EPA IRIS ──────────────────────────────────────────────────────────
+
+def run_iris(dtxsid_list: list, casrn_map: dict) -> pd.DataFrame:
+    """Fetch EPA IRIS reference dose / cancer data and save parquet."""
+    logger.info("=== M3.1d: EPA IRIS ===")
+    records = get_iris_batch(dtxsid_list)
+
+    df = pd.DataFrame(records)
+    df["casrn"] = df["dtxsid"].map(casrn_map)
+    df["data_source"] = "ccte_iris_api"
+    df["fetched_date"] = str(date.today())
+
+    out = WAREHOUSE / "ref_chemicals_iris.parquet"
+    df.to_parquet(out, index=False)
+    iris_count = int(df["has_iris"].sum())
+    logger.info(
+        "IRIS: %d/%d chemicals have assessments -> %s",
+        iris_count, len(dtxsid_list), out,
+    )
+    return df
+
+
 # ── Report Generation ─────────────────────────────────────────────────────────
 
 def generate_report(
     chem_df: pd.DataFrame,
     tox_df: pd.DataFrame,
     expo_df: pd.DataFrame,
+    iris_df: pd.DataFrame,
     source_df: pd.DataFrame,
 ) -> str:
     total = len(source_df)
@@ -246,28 +270,51 @@ This tells us how common each chemical is across all consumer products in the U.
     else:
         report += "*No ChemExpo product data returned.*\n"
 
+    # M3.1d — IRIS section
+    iris_count = int(iris_df["has_iris"].sum()) if len(iris_df) > 0 else 0
+    report += f"""
+---
+
+## M3.1d — EPA IRIS Federal Risk Assessments
+
+**{iris_count}/{total}** chemicals have an EPA IRIS assessment.
+
+IRIS is the federal standard used by EPA, FDA, and OSHA to set safety limits.
+It provides reference doses (how much is safe per day) and cancer classifications.
+
+"""
+    if iris_count > 0:
+        iris_chems = iris_df[iris_df["has_iris"]].copy()
+        report += (
+            "| CASRN | Chemical | Safe Daily Dose (RfD) "
+            "| Safe Air Conc. (RfC) | Tumor Sites | IRIS Link |\n"
+        )
+        report += (
+            "|-------|---------|----------------------"
+            "|----------------------|-------------|----------|\n"
+        )
+        for _, row in iris_chems.iterrows():
+            rfd = str(row.get("rfd_chronic") or "—")
+            rfc = str(row.get("rfc_chronic") or "—")
+            tumors = str(row.get("tumor_sites") or "—")[:30]
+            url = str(row.get("iris_url") or "—")
+            report += (
+                f"| {row.get('casrn', '—')} "
+                f"| {row.get('dtxsid', '—')} "
+                f"| {rfd} | {rfc} | {tumors} | {url} |\n"
+            )
+    else:
+        report += "*No IRIS assessments found for these chemicals.*\n"
+
     report += """
 ---
 
-## Data Gaps & Next Steps
-
-- **OPERA Predictions (M3.1d):** Download OPERA bulk model predictions from
-  `comptox.epa.gov/dashboard/downloads` for chemicals missing ToxCast data.
-  This provides predicted carcinogenicity, skin absorption, and endocrine disruption
-  scores for any chemical with a DTXSID.
-
-- **GenRA (M3.2 prep):** For chemicals with no ToxCast hits and no GHS data,
-  use the GenRA tool at `comptox.epa.gov/genra` to find structurally similar
-  chemicals that ARE tested and borrow their hazard predictions.
-
 ## Methodology
 
-- **API:** EPA CCTE API (`api-ccte.epa.gov`) — free with API key
-- **Rate limiting:** 3 requests/second; all results cached locally
-  in `data/raw/ccte_cache/` to avoid duplicate API calls
-- **Authentication:** CTX API key loaded from `.env` (`CTX_API_KEY`)
-- **Caching strategy:** SHA-256 keyed JSON cache per endpoint + DTXSID;
-  delete `data/raw/ccte_cache/` to force a full refresh
+- **API:** EPA CCTE API via ctx-python — free with API key
+- **Authentication:** CTX_API_KEY in `.env`
+- **Caching:** SHA-256 keyed JSON in `data/raw/ccte_cache/`
+  (delete to force full refresh)
 """
     return report
 
@@ -279,25 +326,22 @@ def main():
     logger.info("M3.1 EPA Data Integration — Starting")
     logger.info("=" * 60)
 
-    # Load chemicals
     source_df = load_dtxsid_list()
     dtxsid_list = source_df["dtxsid"].tolist()
     casrn_map = dict(zip(source_df["dtxsid"], source_df["casrn"]))
 
     logger.info("Processing %d chemicals with DTXSID", len(dtxsid_list))
 
-    # Run all three sub-tasks
     chem_df = run_comptox_detail(dtxsid_list, casrn_map)
     tox_df = run_toxcast(dtxsid_list, casrn_map)
     expo_df = run_chemexpo(dtxsid_list, casrn_map)
+    iris_df = run_iris(dtxsid_list, casrn_map)
 
-    # Generate report
-    report = generate_report(chem_df, tox_df, expo_df, source_df)
+    report = generate_report(chem_df, tox_df, expo_df, iris_df, source_df)
     report_path = REPORTS / "M3.1_epa_data_report.md"
     report_path.write_text(report)
     logger.info("Report saved -> %s", report_path)
 
-    # Summary
     logger.info("=" * 60)
     logger.info("M3.1 Complete")
     logger.info(
@@ -306,13 +350,18 @@ def main():
         len(dtxsid_list),
     )
     logger.info(
-        "  ToxCast active: %d/%d",
-        int((tox_df["assays_active"] > 0).sum()) if len(tox_df) > 0 else 0,
+        "  ToxCast studies: %d/%d",
+        int((tox_df["assays_tested"] > 0).sum()) if len(tox_df) > 0 else 0,
         len(dtxsid_list),
     )
     logger.info(
         "  ChemExpo found: %d/%d",
         int((expo_df["national_product_count"] > 0).sum()) if len(expo_df) > 0 else 0,
+        len(dtxsid_list),
+    )
+    logger.info(
+        "  IRIS assessments: %d/%d",
+        int(iris_df["has_iris"].sum()) if len(iris_df) > 0 else 0,
         len(dtxsid_list),
     )
     logger.info("=" * 60)

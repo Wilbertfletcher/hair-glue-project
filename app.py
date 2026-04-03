@@ -119,6 +119,7 @@ def load_data():
         "comptox": "ref_chemicals_comptox.parquet",
         "toxcast": "ref_chemicals_toxcast.parquet",
         "chemexpo": "ref_chemicals_chemexpo.parquet",
+        "iris": "ref_chemicals_iris.parquet",
     }
     for key, fname in files.items():
         path = WAREHOUSE / fname
@@ -189,8 +190,13 @@ def page_overview(data):
 
     if len(ph) > 0 and 'hazard_flag' in ph.columns:
         high_pct = (ph['hazard_flag'] == 'HIGH').mean()
-        col4.metric("HIGH Danger Products", f"{high_pct:.0%}",
-                    help="Percentage of products rated HIGH danger — meaning they contain chemicals with serious health warnings.")
+        col4.metric(
+            "HIGH Danger Products", f"{high_pct:.0%}",
+            help=(
+                "Percentage of products rated HIGH danger — meaning they "
+                "contain chemicals with serious health warnings."
+            ),
+        )
 
     st.divider()
 
@@ -209,7 +215,11 @@ def page_overview(data):
             # Map to plain language labels for display
             label_map = {'HIGH': 'HIGH Danger', 'MEDIUM': 'MEDIUM Danger',
                          'LOW': 'LOW Danger', 'NO_DATA': 'Not Enough Data'}
-            flag_counts['Danger Level Label'] = flag_counts['Danger Level'].map(label_map).fillna(flag_counts['Danger Level'])
+            flag_counts['Danger Level Label'] = (
+                flag_counts['Danger Level']
+                .map(label_map)
+                .fillna(flag_counts['Danger Level'])
+            )
             color_map = {'HIGH': '#e74c3c', 'MEDIUM': '#f39c12', 'LOW': '#2ecc71', 'NO_DATA': '#95a5a6'}
             fig = px.pie(
                 flag_counts,
@@ -323,8 +333,14 @@ def page_products(data):
     with col3:
         if 'hazard_flag' in merged.columns:
             flags = ['All'] + sorted(merged['hazard_flag'].dropna().unique().tolist())
-            selected_flag = st.selectbox("Danger Level", flags,
-                                         help="HIGH = serious hazards present, MEDIUM = moderate concerns, LOW = few or minor hazards")
+            selected_flag = st.selectbox(
+                "Danger Level", flags,
+                help=(
+                    "HIGH = serious hazards present, "
+                    "MEDIUM = moderate concerns, "
+                    "LOW = few or minor hazards"
+                ),
+            )
         else:
             selected_flag = 'All'
 
@@ -390,6 +406,38 @@ def page_products(data):
                     st.markdown(f"**Reproductive Hazard Chemicals:** {repro_count}",
                                 help="Number of ingredients that may affect fertility or harm an unborn baby.")
 
+        # FDA reporting badge
+        regulatory = data.get("regulatory", pd.DataFrame())
+        if len(regulatory) > 0 and len(identity) > 0:
+            prod_casrns = identity[
+                identity['product_id'] == pid
+            ]['casrn'].dropna().unique()
+            if len(prod_casrns) > 0 and 'cscp_reportable' in regulatory.columns:
+                reg_match = regulatory[
+                    regulatory['casrn'].isin(prod_casrns)
+                    & (regulatory['cscp_reportable'] == True)  # noqa: E712
+                ]
+                if len(reg_match) > 0:
+                    st.divider()
+                    st.error(
+                        f"**FDA Reportable Ingredients: {len(reg_match)}**  \n"
+                        "This product contains chemicals that companies are "
+                        "required to report to the FDA under the Cosmetics "
+                        "Safety & Chemical Policy (CSCP) program. These are "
+                        "chemicals with recognized hazard traits.",
+                        icon="🏛️",
+                    )
+                    fda_chems = reg_match[[
+                        'casrn', 'canonical_name',
+                        'cscp_hazard_traits', 'cscp_authoritative_lists',
+                    ]].rename(columns={
+                        'casrn': 'CAS #',
+                        'canonical_name': 'Chemical Name',
+                        'cscp_hazard_traits': 'FDA-Recognized Hazard',
+                        'cscp_authoritative_lists': 'On These Official Lists',
+                    })
+                    st.dataframe(fda_chems, width='stretch', hide_index=True)
+
         # Show ingredients for this product
         if len(identity) > 0:
             prod_ingredients = identity[identity['product_id'] == pid]
@@ -402,8 +450,17 @@ def page_products(data):
                     'pubchem_cid_name': 'Found via PubChem Database',
                     'fallback_no_match': 'Could Not Identify',
                 }
-                ing_display['match_source'] = ing_display['match_source'].map(source_plain).fillna(ing_display['match_source'])
-                ing_display.columns = ['Ingredient (As Listed on Label)', 'Chemical ID (CAS #)', 'Official Chemical Name', 'How We Identified It']
+                ing_display['match_source'] = (
+                    ing_display['match_source']
+                    .map(source_plain)
+                    .fillna(ing_display['match_source'])
+                )
+                ing_display.columns = [
+                    'Ingredient (As Listed on Label)',
+                    'Chemical ID (CAS #)',
+                    'Official Chemical Name',
+                    'How We Identified It',
+                ]
                 st.dataframe(ing_display, width='stretch', hide_index=True)
 
 
@@ -424,6 +481,7 @@ def page_chemicals(data):
     toxcast = data.get("toxcast", pd.DataFrame())
     chemexpo = data.get("chemexpo", pd.DataFrame())
     comptox = data.get("comptox", pd.DataFrame())
+    iris = data.get("iris", pd.DataFrame())
 
     if len(ref) == 0:
         st.warning("No chemical reference data available.")
@@ -626,7 +684,64 @@ def page_chemicals(data):
         else:
             st.caption("Structure could not be rendered.")
 
-    # Row 4 — products in our database
+    # Row 4 — EPA IRIS federal risk data
+    if len(iris) > 0 and 'casrn' in iris.columns:
+        iris_row = iris[iris['casrn'] == casrn]
+        if len(iris_row) > 0 and iris_row.iloc[0].get('has_iris'):
+            r = iris_row.iloc[0]
+            st.divider()
+            st.markdown("**EPA IRIS Federal Risk Assessment**")
+            st.caption(
+                "IRIS (Integrated Risk Information System) is the U.S. "
+                "federal standard for chemical safety limits, used by the "
+                "EPA and referenced by the FDA and OSHA."
+            )
+            iris_col1, iris_col2 = st.columns(2)
+            with iris_col1:
+                rfd = r.get('rfd_chronic')
+                if rfd and str(rfd) not in ('None', 'nan', ''):
+                    st.metric(
+                        "Safe Daily Dose (RfD)",
+                        str(rfd),
+                        help=(
+                            "Reference Dose — the amount the EPA considers "
+                            "safe to consume daily over a lifetime "
+                            "(mg per kg of body weight per day)."
+                        ),
+                    )
+                rfc = r.get('rfc_chronic')
+                if rfc and str(rfc) not in ('None', 'nan', ''):
+                    st.metric(
+                        "Safe Air Concentration (RfC)",
+                        str(rfc),
+                        help=(
+                            "Reference Concentration — the safe level in "
+                            "air for continuous inhalation (mg/m³)."
+                        ),
+                    )
+            with iris_col2:
+                effects = r.get('critical_effects')
+                if effects and str(effects) not in ('None', 'nan', ''):
+                    st.markdown("**Critical Health Effects:**")
+                    for effect in str(effects).replace('\n', '|').split('|'):
+                        e = effect.strip()
+                        if e:
+                            st.markdown(f"- {e}")
+                tumors = r.get('tumor_sites')
+                if tumors and str(tumors) not in ('None', 'nan', ''):
+                    st.markdown("**Tumor Sites (Cancer Evidence):**")
+                    for site in str(tumors).replace('\n', '|').split('|'):
+                        s = site.strip()
+                        if s:
+                            st.markdown(f"- {s}")
+            revised = r.get('last_revised')
+            iris_url = r.get('iris_url')
+            if revised:
+                st.caption(f"IRIS last revised: {revised}")
+            if iris_url and str(iris_url) not in ('None', 'nan', ''):
+                st.markdown(f"[View full IRIS assessment]({iris_url})")
+
+    # Row 6 — products in our database
     if len(identity) > 0 and casrn:
         products_with = identity[identity['casrn'] == casrn]
         if len(products_with) > 0:
@@ -696,7 +811,10 @@ def page_brands(data):
     top_n = st.slider("Show top N brands", 10, min(len(brands), 67), 20)
 
     top_brands = brands.nlargest(top_n, sort_by)
-    label_map_flag = {'HIGH': 'HIGH Danger', 'MEDIUM': 'MEDIUM Danger', 'LOW': 'LOW Danger', 'NO_DATA': 'Not Enough Data'}
+    label_map_flag = {
+        'HIGH': 'HIGH Danger', 'MEDIUM': 'MEDIUM Danger',
+        'LOW': 'LOW Danger', 'NO_DATA': 'Not Enough Data',
+    }
     top_brands = top_brands.copy()
     top_brands['Danger Level'] = top_brands['max_hazard_flag'].map(label_map_flag).fillna(top_brands['max_hazard_flag'])
 
@@ -826,7 +944,10 @@ def page_categories(data):
             cats.sort_values('pct_carcinogen'),
             x='pct_carcinogen', y='category_raw', orientation='h',
             color='pct_carcinogen', color_continuous_scale='Reds',
-            labels={'pct_carcinogen': '% Products with Cancer-Causing Chemicals', 'category_raw': 'Product Type'},
+            labels={
+                'pct_carcinogen': '% Products with Cancer-Causing Chemicals',
+                'category_raw': 'Product Type',
+            },
         )
         fig3.update_layout(
             margin=dict(t=20, b=20),
@@ -839,8 +960,12 @@ def page_categories(data):
     # Recommendations table
     st.subheader("Safety Recommendations by Product Type")
     st.caption("A summary table with safety advice for each product type based on our analysis.")
+    display_cats = cats[[
+        'category_raw', 'product_count',
+        'avg_hazard_score', 'pct_high_hazard', 'recommendation',
+    ]]
     st.dataframe(
-        cats[['category_raw', 'product_count', 'avg_hazard_score', 'pct_high_hazard', 'recommendation']].rename(columns={
+        display_cats.rename(columns={
             'category_raw': 'Product Type',
             'product_count': '# Products',
             'avg_hazard_score': 'Avg Danger Score',
@@ -893,7 +1018,13 @@ def page_identity(data):
         'fallback_no_match': 'Could Not Be Identified',
         None: 'Unknown',
     }
-    source_counts = identity['match_source'].map(source_plain_map).fillna(identity['match_source']).value_counts().reset_index()
+    source_counts = (
+        identity['match_source']
+        .map(source_plain_map)
+        .fillna(identity['match_source'])
+        .value_counts()
+        .reset_index()
+    )
     source_counts.columns = ['Identification Method', 'Count']
     fig = px.pie(
         source_counts,
@@ -963,8 +1094,10 @@ st.set_page_config(
 
 st.title("Hair Glue Product Safety Dashboard")
 st.caption(
-    "Analysis of chemicals in hair-glue and weaving-adhesive products using U.S. Cosmetics Safety & Product Tracker (CSCP) data. "
-    "All danger scores and hazard ratings are based on internationally recognized chemical safety standards (GHS)."
+    "Analysis of chemicals in hair-glue and weaving-adhesive products "
+    "using U.S. Cosmetics Safety & Product Tracker (CSCP) data. "
+    "All danger scores and hazard ratings are based on internationally "
+    "recognized chemical safety standards (GHS)."
 )
 
 data = load_data()
