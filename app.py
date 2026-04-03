@@ -12,25 +12,90 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import requests
 from pathlib import Path
+
+try:
+    from rdkit import Chem
+    from rdkit.Chem.Draw import rdMolDraw2D
+    RDKIT_OK = True
+except ImportError:
+    RDKIT_OK = False
+
+
+def draw_smiles_svg(
+    smiles: str, width: int = 400, height: int = 250
+) -> str:
+    """Return an SVG string for a SMILES structure, or '' on failure."""
+    if (
+        not RDKIT_OK
+        or not smiles
+        or str(smiles).strip() in ('', 'nan', 'None')
+    ):
+        return ''
+    try:
+        mol = Chem.MolFromSmiles(str(smiles).strip())
+        if mol is None:
+            return ''
+        drawer = rdMolDraw2D.MolDraw2DSVG(width, height)
+        drawer.drawOptions().addStereoAnnotation = True
+        drawer.DrawMolecule(mol)
+        drawer.FinishDrawing()
+        return drawer.GetDrawingText()
+    except Exception:
+        return ''
+
 
 WAREHOUSE = Path("warehouse")
 
 # ── Plain-language term glossary ──────────────────────────────────────────────
 GLOSSARY = {
-    "Danger Score": "A number from 0 to 100 that shows how risky a product is based on its chemicals. Higher = more dangerous.",
-    "Danger Level": "A quick label (HIGH, MEDIUM, LOW) that tells you at a glance how risky a product is.",
-    "Cancer-Causing Chemical (Carcinogen)": "A chemical that can increase the risk of cancer with long-term exposure.",
-    "Reproductive Hazard": "A chemical that can harm the ability to have children or can hurt an unborn baby.",
-    "Organ Damage Chemical": "A chemical that can injure organs (like the liver, kidneys, or lungs) when used repeatedly.",
-    "GHS": "Global Harmonized System — an international system for labeling how dangerous chemicals are.",
-    "Warning Strength": "Either 'DANGER' (very serious hazard) or 'WARNING' (moderate hazard) printed on product labels.",
-    "Hazard Statement Code (H-Code)": "A short code (like H350) that stands for a specific health or safety warning, used worldwide.",
-    "Chemical ID Number (CAS #)": "A unique number given to every chemical — like a social security number for chemicals.",
-    "Official Chemical Name": "The standardized, internationally recognized name for a chemical.",
-    "Chemical Name Matching": "The process of figuring out the real identity of an ingredient listed on a product label.",
-    "Product Type / Category": "The type of product (e.g., Hair Extensions, Nail Products, Skin Care).",
+    "Danger Score": (
+        "A number from 0 to 100 that shows how risky a product is based on "
+        "its chemicals. Higher = more dangerous."
+    ),
+    "Danger Level": (
+        "A quick label (HIGH, MEDIUM, LOW) that tells you at a glance how "
+        "risky a product is."
+    ),
+    "Cancer-Causing Chemical (Carcinogen)": (
+        "A chemical that can increase the risk of cancer with long-term "
+        "exposure."
+    ),
+    "Reproductive Hazard": (
+        "A chemical that can harm the ability to have children or can hurt "
+        "an unborn baby."
+    ),
+    "Organ Damage Chemical": (
+        "A chemical that can injure organs (like the liver, kidneys, or "
+        "lungs) when used repeatedly."
+    ),
+    "GHS": (
+        "Global Harmonized System — an international system for labeling "
+        "how dangerous chemicals are."
+    ),
+    "Warning Strength": (
+        "Either 'DANGER' (very serious hazard) or 'WARNING' (moderate "
+        "hazard) printed on product labels."
+    ),
+    "Hazard Statement Code (H-Code)": (
+        "A short code (like H350) that stands for a specific health or "
+        "safety warning, used worldwide."
+    ),
+    "Chemical ID Number (CAS #)": (
+        "A unique number given to every chemical — like a social security "
+        "number for chemicals."
+    ),
+    "Official Chemical Name": (
+        "The standardized, internationally recognized name for a chemical."
+    ),
+    "Chemical Name Matching": (
+        "The process of figuring out the real identity of an ingredient "
+        "listed on a product label."
+    ),
+    "Product Type / Category": (
+        "The type of product (e.g., Hair Extensions, Nail Products, "
+        "Skin Care)."
+    ),
 }
 
 
@@ -347,159 +412,243 @@ def page_chemicals(data):
     st.header("Chemical Database")
 
     st.info(
-        "**What this page shows:** A searchable database of every chemical found in hair-glue products. "
-        "You can look up any chemical by its name or ID number (CAS #) to see what kind of health "
-        "hazards it carries. Select a chemical to see which products contain it and get its full "
-        "safety profile. This page is useful for parents, consumers, or researchers checking whether "
-        "a specific ingredient is dangerous."
+        "**What this page shows:** A searchable database of every chemical "
+        "found in hair-glue products, enriched with live EPA data. "
+        "Select a chemical to see its full safety profile, EPA toxicology "
+        "study count, national product exposure, and structure data."
     )
 
     hazard_ref = data["hazard_ref"]
     identity = data["identity"]
     ref = data["ref_chemicals"]
+    toxcast = data.get("toxcast", pd.DataFrame())
+    chemexpo = data.get("chemexpo", pd.DataFrame())
+    comptox = data.get("comptox", pd.DataFrame())
 
     if len(ref) == 0:
         st.warning("No chemical reference data available.")
         return
 
-    # Search
-    search = st.text_input("Search chemicals", placeholder="Chemical ID (CAS #) or chemical name...")
-
-    # Build chemical view
+    # ── Build merged chemical view ─────────────────────────────────────────
     chem_view = ref.copy()
+
     if len(hazard_ref) > 0:
-        haz_dedup = hazard_ref.sort_values('canonical_name', na_position='last').drop_duplicates(
-            subset='casrn', keep='first'
+        haz_dedup = (
+            hazard_ref
+            .sort_values('canonical_name', na_position='last')
+            .drop_duplicates(subset='casrn', keep='first')
         )
-        merge_cols = ['casrn']
-        haz_cols = [c for c in ['ghs_hazard_class', 'ghs_signal_word', 'h_codes'] if c in haz_dedup.columns]
-        chem_view = chem_view.merge(haz_dedup[merge_cols + haz_cols], on='casrn', how='left')
+        haz_cols = [
+            c for c in ['ghs_hazard_class', 'ghs_signal_word', 'h_codes']
+            if c in haz_dedup.columns
+        ]
+        chem_view = chem_view.merge(
+            haz_dedup[['casrn'] + haz_cols], on='casrn', how='left'
+        )
 
-    # Apply plain-language hazard classes
+    if len(toxcast) > 0 and 'casrn' in toxcast.columns:
+        tox_cols = [
+            c for c in ['casrn', 'assays_tested', 'assays_active']
+            if c in toxcast.columns
+        ]
+        chem_view = chem_view.merge(toxcast[tox_cols], on='casrn', how='left')
+
+    if len(chemexpo) > 0 and 'casrn' in chemexpo.columns:
+        expo_cols = [
+            c for c in ['casrn', 'national_product_count', 'use_count']
+            if c in chemexpo.columns
+        ]
+        chem_view = chem_view.merge(chemexpo[expo_cols], on='casrn', how='left')
+
+    if len(comptox) > 0 and 'casrn' in comptox.columns:
+        ctx_cols = [
+            c for c in ['casrn', 'preferred_name', 'molecular_formula',
+                        'molecular_mass', 'smiles', 'dtxsid']
+            if c in comptox.columns
+        ]
+        chem_view = chem_view.merge(comptox[ctx_cols], on='casrn', how='left')
+
     if 'ghs_hazard_class' in chem_view.columns:
-        chem_view['ghs_hazard_class_plain'] = chem_view['ghs_hazard_class'].apply(plain_hazard_class)
+        chem_view['ghs_hazard_class_plain'] = (
+            chem_view['ghs_hazard_class'].apply(plain_hazard_class)
+        )
 
+    # ── Search ─────────────────────────────────────────────────────────────
+    search = st.text_input(
+        "Search chemicals",
+        placeholder="Chemical name or CAS #...",
+    )
     if search:
         mask = chem_view.apply(
-            lambda r: search.lower() in str(r.get('canonical_name', '')).lower()
-                      or search.lower() in str(r.get('casrn', '')).lower(),
-            axis=1
+            lambda r: (
+                search.lower() in str(r.get('canonical_name', '')).lower()
+                or search.lower() in str(r.get('preferred_name', '')).lower()
+                or search.lower() in str(r.get('casrn', '')).lower()
+            ),
+            axis=1,
         )
         chem_view = chem_view[mask]
 
+    # ── Summary table ──────────────────────────────────────────────────────
     st.caption(f"Showing {len(chem_view)} chemicals")
 
-    display_cols = ['casrn', 'canonical_name', 'source']
-    plain_col = 'ghs_hazard_class_plain' if 'ghs_hazard_class_plain' in chem_view.columns else None
-    if plain_col:
-        display_cols.append(plain_col)
+    table_cols = ['casrn', 'canonical_name']
     if 'ghs_signal_word' in chem_view.columns:
-        display_cols.append('ghs_signal_word')
+        table_cols.append('ghs_signal_word')
+    if 'ghs_hazard_class_plain' in chem_view.columns:
+        table_cols.append('ghs_hazard_class_plain')
+    if 'assays_tested' in chem_view.columns:
+        table_cols.append('assays_tested')
+    if 'national_product_count' in chem_view.columns:
+        table_cols.append('national_product_count')
+    if 'molecular_formula' in chem_view.columns:
+        table_cols.append('molecular_formula')
 
     rename_map = {
-        'casrn': 'Chemical ID (CAS #)',
-        'canonical_name': 'Official Chemical Name',
-        'source': 'Data Source',
-        'ghs_signal_word': 'Warning Strength (DANGER / WARNING)',
+        'casrn': 'CAS #',
+        'canonical_name': 'Chemical Name',
+        'ghs_signal_word': 'GHS Warning',
+        'ghs_hazard_class_plain': 'Hazard Type',
+        'assays_tested': 'EPA Tox Studies',
+        'national_product_count': 'In # Products Nationally',
+        'molecular_formula': 'Formula',
     }
-    if plain_col:
-        rename_map[plain_col] = 'Type of Hazard'
-
     st.dataframe(
-        chem_view[[c for c in display_cols if c in chem_view.columns]].rename(columns=rename_map),
+        chem_view[[c for c in table_cols if c in chem_view.columns]]
+        .rename(columns=rename_map),
         width='stretch',
         hide_index=True,
     )
 
-    # ToxCast + ChemExpo summary table
-    toxcast = data.get("toxcast", pd.DataFrame())
-    chemexpo = data.get("chemexpo", pd.DataFrame())
-    regulatory = data.get("regulatory", pd.DataFrame())
+    # ── Chemical detail panel ──────────────────────────────────────────────
+    st.divider()
+    st.subheader("Chemical Safety Profile")
+    chem_names = chem_view['canonical_name'].dropna().unique().tolist()
+    if not chem_names:
+        return
 
-    has_epa = (
-        len(toxcast) > 0
-        or len(chemexpo) > 0
-    )
-    if has_epa:
-        st.divider()
-        st.subheader("EPA ToxCast & ChemExpo Data")
+    selected_chem = st.selectbox("Select a chemical", sorted(chem_names))
+    chem_row = chem_view[chem_view['canonical_name'] == selected_chem].iloc[0]
+    casrn = chem_row.get('casrn')
+
+    # Row 1 — identity + GHS signal
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown(f"**Chemical Name:** {selected_chem}")
+        st.markdown(f"**CAS #:** {casrn or 'N/A'}")
+        dtxsid = chem_row.get('dtxsid')
+        if dtxsid and str(dtxsid) not in ('nan', 'None', ''):
+            st.markdown(f"**EPA ID (DTXSID):** {dtxsid}")
+        formula = chem_row.get('molecular_formula')
+        if formula and str(formula) not in ('nan', 'None', ''):
+            st.markdown(f"**Molecular Formula:** {formula}")
+        mass = chem_row.get('molecular_mass')
+        if mass and str(mass) not in ('nan', 'None', ''):
+            try:
+                st.markdown(f"**Molecular Mass:** {float(mass):.3f} g/mol")
+            except (ValueError, TypeError):
+                pass
+        smiles = chem_row.get('smiles')
+        if smiles and str(smiles) not in ('nan', 'None', ''):
+            st.caption(f"SMILES: `{str(smiles)[:80]}`")
+
+    with col_b:
+        signal = chem_row.get('ghs_signal_word', '')
+        if str(signal).upper() == 'DANGER':
+            st.error("GHS Warning: DANGER — Very Serious Hazard")
+        elif str(signal).upper() == 'WARNING':
+            st.warning("GHS Warning: WARNING — Moderate Hazard")
+        else:
+            st.info("GHS Warning: Not classified")
         st.caption(
-            "ToxCast = how many EPA lab tests found this chemical biologically active. "
-            "ChemExpo = how many consumer products nationally contain this chemical."
+            "DANGER = can cause severe injury or death. "
+            "WARNING = harmful but less immediately severe."
         )
-        epa_view = pd.DataFrame()
-        if len(regulatory) > 0 and "casrn" in regulatory.columns:
-            epa_view = regulatory[["casrn"]].copy()
-            if "canonical_name" in regulatory.columns:
-                epa_view["canonical_name"] = regulatory["canonical_name"]
-        if len(toxcast) > 0 and "casrn" in toxcast.columns:
-            tox_cols = [c for c in ["casrn", "assays_tested", "assays_active", "activity_score"] if c in toxcast.columns]
-            epa_view = epa_view.merge(toxcast[tox_cols], on="casrn", how="left") if len(epa_view) > 0 else toxcast[tox_cols].copy()
-        if len(chemexpo) > 0 and "casrn" in chemexpo.columns:
-            expo_cols = [c for c in ["casrn", "national_product_count", "functional_uses"] if c in chemexpo.columns]
-            epa_view = epa_view.merge(chemexpo[expo_cols], on="casrn", how="left") if len(epa_view) > 0 else chemexpo[expo_cols].copy()
+        classes = chem_row.get('ghs_hazard_class', '')
+        if classes and not pd.isna(classes):
+            st.markdown("**Hazard Types:**")
+            for cls in str(classes).split('|'):
+                st.markdown(f"- {plain_hazard_class(cls.strip())}")
 
-        if len(epa_view) > 0:
-            rename = {
-                "casrn": "Chemical ID (CAS #)",
-                "canonical_name": "Chemical Name",
-                "assays_tested": "ToxCast: Assays Tested",
-                "assays_active": "ToxCast: Active Hits",
-                "activity_score": "ToxCast Activity Score (0–1)",
-                "national_product_count": "ChemExpo: Products Nationally",
-                "functional_uses": "ChemExpo: Functional Uses",
-            }
+    # Row 2 — EPA data metrics
+    epa_col1, epa_col2, epa_col3 = st.columns(3)
+
+    assays = chem_row.get('assays_tested')
+    active = chem_row.get('assays_active')
+    nat_count = chem_row.get('national_product_count')
+    use_count = chem_row.get('use_count')
+
+    with epa_col1:
+        val = int(assays) if assays and str(assays) not in ('nan', 'None') else 0
+        st.metric(
+            "EPA Toxicology Studies",
+            val,
+            help=(
+                "Number of toxicological study records in EPA ToxValDB "
+                "for this chemical. Higher = more studied = more data available."
+            ),
+        )
+    with epa_col2:
+        val2 = int(nat_count) if nat_count and str(nat_count) not in ('nan', 'None') else 0
+        st.metric(
+            "In # Consumer Products (National)",
+            f"{val2:,}",
+            help=(
+                "How many consumer products in the EPA ChemExpo database "
+                "contain this chemical. Shows how widespread your exposure "
+                "to this ingredient is beyond just hair-glue products."
+            ),
+        )
+    with epa_col3:
+        val3 = int(use_count) if use_count and str(use_count) not in ('nan', 'None') else 0
+        st.metric(
+            "Functional Use Records",
+            val3,
+            help=(
+                "Number of records describing how this chemical is used "
+                "across products in the EPA ChemExpo database."
+            ),
+        )
+
+    # Row 3 — chemical structure
+    smiles = chem_row.get('smiles')
+    svg = draw_smiles_svg(str(smiles) if smiles else '', width=260, height=180)
+    if smiles and str(smiles) not in ('nan', 'None', ''):
+        st.divider()
+        st.markdown("**2D Chemical Structure**")
+        st.markdown(f"**`{str(smiles)[:120]}`**")
+        if svg:
+            st.markdown(
+                f'<div style="background:#fff;padding:6px;border-radius:6px;'
+                f'display:inline-block;margin-top:6px">{svg}</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption("Structure could not be rendered.")
+
+    # Row 4 — products in our database
+    if len(identity) > 0 and casrn:
+        products_with = identity[identity['casrn'] == casrn]
+        if len(products_with) > 0:
+            st.divider()
+            prods = data["products"]
+            product_list = prods[
+                prods['product_id'].isin(products_with['product_id'])
+            ]
+            st.markdown(
+                f"**Found in {len(product_list)} products in this dataset:**"
+            )
             st.dataframe(
-                epa_view.rename(columns=rename),
-                width="stretch",
+                product_list[
+                    ['product_name', 'brand', 'category_raw']
+                ].rename(columns={
+                    'product_name': 'Product Name',
+                    'brand': 'Brand',
+                    'category_raw': 'Product Type',
+                }),
+                width='stretch',
                 hide_index=True,
             )
-
-    # Detail view
-    if len(hazard_ref) > 0:
-        st.divider()
-        st.subheader("Chemical Safety Profile")
-        st.caption(
-            "Select a chemical below to see its full safety profile — what hazards it poses, "
-            "how severe the warning is, and which products in our database contain it."
-        )
-        chem_names = chem_view['canonical_name'].dropna().unique().tolist()
-        if chem_names:
-            selected_chem = st.selectbox("Select chemical", sorted(chem_names))
-            chem_row = chem_view[chem_view['canonical_name'] == selected_chem].iloc[0]
-            casrn = chem_row.get('casrn')
-
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.markdown(f"**Chemical ID (CAS #):** {casrn or 'N/A'}")
-                signal = chem_row.get('ghs_signal_word', 'N/A')
-                signal_icon = '⚠️ DANGER' if str(signal).upper() == 'DANGER' else ('⚡ WARNING' if str(signal).upper() == 'WARNING' else str(signal))
-                st.markdown(f"**Warning Strength:** {signal_icon}")
-                st.caption(
-                    "DANGER = most serious hazard level (can cause severe injury or death). "
-                    "WARNING = moderate hazard (harmful but less immediately severe)."
-                )
-            with col_b:
-                classes = chem_row.get('ghs_hazard_class', '')
-                if classes and not pd.isna(classes):
-                    st.markdown("**Types of Hazard this Chemical Poses:**")
-                    for cls in str(classes).split('|'):
-                        plain = plain_hazard_class(cls.strip())
-                        st.markdown(f"- {plain}")
-
-            # Find products containing this chemical
-            if len(identity) > 0 and casrn:
-                products_with = identity[identity['casrn'] == casrn]
-                if len(products_with) > 0:
-                    prods = data["products"]
-                    product_list = prods[prods['product_id'].isin(products_with['product_id'])]
-                    st.markdown(f"**Found in {len(product_list)} products:**")
-                    st.dataframe(
-                        product_list[['product_name', 'brand', 'category_raw']].rename(columns={
-                            'product_name': 'Product Name', 'brand': 'Brand', 'category_raw': 'Product Type'
-                        }),
-                        width='stretch', hide_index=True
-                    )
 
 
 def page_brands(data):
@@ -804,366 +953,6 @@ def page_identity(data):
         st.success("All chemicals were successfully identified!")
 
 
-def page_epa_tools(data):
-    """EPA Research Tools integration guide and live demo."""
-    st.header("EPA Chemical Research Tools")
-
-    st.info(
-        "**What this page shows:** The U.S. Environmental Protection Agency (EPA) has built a suite of "
-        "powerful free tools for researching chemical safety. This page explains each tool, shows how it "
-        "relates to this dashboard, and demonstrates live data lookups for chemicals in our database. "
-        "These tools together form one of the most complete public chemical safety systems in the world."
-    )
-
-    st.divider()
-
-    # ── Tool Overview Cards ──────────────────────────────────────────────────
-    st.subheader("The 5 EPA Tools — What Each One Does")
-
-    with st.expander("1. ToxCast — Lab Test Results for Thousands of Chemicals", expanded=True):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.markdown("""
-**What it is:** ToxCast (short for Toxicity Forecasting) is an EPA program that tested over
-**10,000 chemicals** in hundreds of computer-based lab tests to predict how they might affect
-the human body — things like hormone disruption, cell damage, and organ toxicity.
-
-**Why it matters for this dashboard:** Many chemicals in hair-glue products haven't been
-tested in animals or people, but ToxCast has run quick computer tests on them. We can pull
-those test results to fill in safety gaps.
-
-**What data we can pull:**
-- How many ToxCast biological tests a chemical "hit" (triggered a response in)
-- Which body systems or hormones might be disrupted
-- A "ToxCast Score" that summarizes overall biological activity
-
-**Plain language:** Think of ToxCast as a massive science fair where thousands of chemicals
-were tested against hundreds of different body sensors to see which ones caused a reaction.
-            """)
-        with col2:
-            st.markdown("**Key Facts:**")
-            st.metric("Chemicals Tested", "10,000+")
-            st.metric("Lab Tests (Assays)", "1,500+")
-            st.metric("Data Points", "~700 million")
-
-    with st.expander("2. GenRA Tool — Predicting Toxicity by Comparison"):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.markdown("""
-**What it is:** GenRA (Generalized Read-Across) is a tool that estimates how toxic an
-**untested chemical** is by comparing it to *similar chemicals that have been tested*.
-This is like saying "this new chemical looks a lot like formaldehyde, so it might have
-similar risks."
-
-**Why it matters for this dashboard:** Many hair-glue chemicals have almost no safety data.
-GenRA lets us make educated predictions by finding their "chemical cousins" that ARE tested.
-
-**What data we can pull:**
-- A predicted toxicity level for chemicals with little existing data
-- A list of "neighbor chemicals" that are structurally similar
-- Confidence scores for the predictions
-
-**Plain language:** Imagine you've never tasted a new fruit, but you know it looks and smells
-almost exactly like a mango. You'd predict it tastes like mango. GenRA does the same thing,
-but for chemical safety.
-            """)
-        with col2:
-            st.markdown("**Key Facts:**")
-            st.metric("Approach", "Read-Across")
-            st.metric("Useful For", "Data gaps")
-
-    with st.expander("3. CompTox Chemicals Dashboard — Chemical Info One-Stop Shop"):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.markdown("""
-**What it is:** The CompTox Chemicals Dashboard is the EPA's central database for chemical
-information. Every chemical gets a unique EPA ID called a **DTXSID** (similar to a CAS # but
-from the EPA). The dashboard brings together structure, physical properties, toxicity data,
-exposure data, and regulatory status all in one place.
-
-**Why it matters for this dashboard:** We already fetch DTXSID numbers for chemicals in our
-pipeline. With DTXSID we can pull structure images, predicted properties, bioactivity data,
-and regulatory flags directly from the CompTox API.
-
-**What data we can pull via API:**
-- Chemical structure (2D image, SMILES, InChI)
-- Predicted physical properties (melting point, solubility)
-- TSCA listing (is it on the EPA's Toxic Substances list?)
-- Predicted toxicity values (acute, chronic)
-- Link to ToxCast and other EPA data
-
-**Plain language:** Think of CompTox as the Wikipedia of chemicals — it pulls together
-everything known about a chemical into one clean page, and it's built and maintained by the EPA.
-            """)
-        with col2:
-            st.markdown("**Key Facts:**")
-            st.metric("Chemicals in Database", "875,000+")
-            st.metric("Our Integration", "Via DTXSID")
-
-    with st.expander("4. ChemExpo Knowledgebase — Where Chemicals Appear in Products"):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.markdown("""
-**What it is:** ChemExpo is the EPA's database of **which chemicals appear in which consumer
-products** — exactly like what this dashboard tracks, but at a national scale. It covers
-cosmetics, cleaning products, food packaging, and more, pulling data from ingredient lists,
-safety data sheets, and product databases.
-
-**Why it matters for this dashboard:** ChemExpo is essentially a national-scale version of
-what we're doing — tracking chemical exposures in cosmetic products. We can look up our
-chemicals in ChemExpo to see:
-- How common is this chemical in hair products nationally?
-- What is the estimated exposure level for consumers?
-- Are other product categories also using this chemical?
-
-**What data we can pull via API:**
-- Product categories where a chemical appears
-- Estimated consumer exposure levels
-- Functional use (e.g., preservative, fragrance, solvent)
-
-**Plain language:** ChemExpo is like a national ingredient tracker — it tells you "this
-preservative shows up in 3,000 different products" or "your typical exposure to formaldehyde
-from hair products is X micrograms per day."
-            """)
-        with col2:
-            st.markdown("**Key Facts:**")
-            st.metric("Products Tracked", "75,000+")
-            st.metric("Relevant to Us", "Cosmetics data")
-
-    with st.expander("5. Cheminformatics Modules — Computer Analysis of Chemical Structure"):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.markdown("""
-**What it is:** The EPA's Cheminformatics Modules are a set of computer tools that analyze
-the molecular structure of chemicals to predict their properties and hazards. They use
-**QSAR models** (Quantitative Structure–Activity Relationship), which are machine learning
-models trained on known chemical data.
-
-**Why it matters for this dashboard:** For chemicals in hair-glue products that have no
-safety testing at all, cheminformatics can make predictions just from the chemical's
-structure. We can predict skin absorption, bioaccumulation, and chronic toxicity.
-
-**What data we can pull:**
-- Predicted skin penetration (does it absorb through skin?)
-- Predicted endocrine disruption (does it mess with hormones?)
-- Predicted carcinogenicity (from structure alone)
-- OPERA models: 20+ property predictions
-
-**Plain language:** Like a doctor who can diagnose a disease from an X-ray without running
-blood tests, cheminformatics reads a chemical's "molecular shape" and predicts how it will
-behave in your body.
-            """)
-        with col2:
-            st.markdown("**Key Facts:**")
-            st.metric("OPERA Models", "20+")
-            st.metric("Input needed", "SMILES/DTXSID")
-
-    st.divider()
-
-    # ── Warehouse Data Summary ────────────────────────────────────────────────
-    comptox = data.get("comptox", pd.DataFrame())
-    toxcast = data.get("toxcast", pd.DataFrame())
-    chemexpo = data.get("chemexpo", pd.DataFrame())
-
-    has_m31_data = len(comptox) > 0 or len(toxcast) > 0 or len(chemexpo) > 0
-
-    if has_m31_data:
-        st.subheader("M3.1 EPA Data Already in Warehouse")
-        col1, col2, col3 = st.columns(3)
-        col1.metric(
-            "CompTox Chemicals",
-            len(comptox[comptox["preferred_name"].notna()]) if len(comptox) > 0 else 0,
-            help="Chemicals with structure data from CompTox."
-        )
-        col2.metric(
-            "ToxCast Active Chemicals",
-            int((toxcast["assays_active"] > 0).sum()) if len(toxcast) > 0 else 0,
-            help="Chemicals that triggered at least one ToxCast bioassay."
-        )
-        col3.metric(
-            "ChemExpo: Found Nationally",
-            int((chemexpo["national_product_count"] > 0).sum()) if len(chemexpo) > 0 else 0,
-            help="Chemicals found in consumer products in the ChemExpo database."
-        )
-
-        if len(toxcast) > 0 and "activity_score" in toxcast.columns:
-            st.subheader("ToxCast Activity Scores for Our Chemicals")
-            st.caption(
-                "Activity Score = fraction of lab tests where this chemical triggered a biological response. "
-                "Higher = more biologically active = more concern."
-            )
-            tox_display = toxcast[toxcast["assays_tested"] > 0].sort_values(
-                "activity_score", ascending=False
-            )
-            if len(tox_display) > 0:
-                fig = px.bar(
-                    tox_display,
-                    x="casrn",
-                    y="activity_score",
-                    labels={
-                        "casrn": "Chemical ID (CAS #)",
-                        "activity_score": "ToxCast Activity Score (0 = no hits, 1 = all hits)",
-                    },
-                    color="activity_score",
-                    color_continuous_scale="Reds",
-                )
-                fig.update_layout(
-                    margin=dict(t=20, b=40),
-                    showlegend=False,
-                    coloraxis_colorbar=dict(title="Activity Score"),
-                )
-                st.plotly_chart(fig, width="stretch")
-
-        if len(chemexpo) > 0 and "national_product_count" in chemexpo.columns:
-            st.subheader("ChemExpo: How Many Consumer Products Contain Each Chemical?")
-            expo_display = chemexpo[chemexpo["national_product_count"] > 0].sort_values(
-                "national_product_count", ascending=False
-            )
-            if len(expo_display) > 0:
-                fig2 = px.bar(
-                    expo_display,
-                    x="casrn",
-                    y="national_product_count",
-                    labels={
-                        "casrn": "Chemical ID (CAS #)",
-                        "national_product_count": "Number of Consumer Products Nationally",
-                    },
-                    color="national_product_count",
-                    color_continuous_scale="Blues",
-                )
-                fig2.update_layout(
-                    margin=dict(t=20, b=40),
-                    showlegend=False,
-                    coloraxis_colorbar=dict(title="# Products"),
-                )
-                st.plotly_chart(fig2, width="stretch")
-
-        st.divider()
-
-    # ── Live Data Demo ───────────────────────────────────────────────────────
-    st.subheader("Live Chemical Lookup — CompTox & ToxCast API Demo")
-    st.caption(
-        "Select a chemical from our database that has an EPA ID (DTXSID) to fetch live data "
-        "from the EPA CompTox API. This demonstrates what integration would look like."
-    )
-
-    regulatory = data.get("regulatory", pd.DataFrame())
-    ref_chem = data.get("ref_chemicals", pd.DataFrame())
-
-    if len(regulatory) == 0 or 'dtxsid' not in regulatory.columns:
-        st.warning(
-            "No regulatory data with EPA IDs (DTXSID) available yet. "
-            "Run `python -m pipeline.cli enrich-regulatory` to populate this data."
-        )
-    else:
-        # Filter to chemicals with a DTXSID
-        has_dtxsid = regulatory[regulatory['dtxsid'].notna() & (regulatory['dtxsid'] != '')].copy()
-
-        if len(ref_chem) > 0 and 'canonical_name' in ref_chem.columns:
-            has_dtxsid = has_dtxsid.merge(
-                ref_chem[['casrn', 'canonical_name']], on='casrn', how='left'
-            )
-        else:
-            has_dtxsid['canonical_name'] = has_dtxsid['casrn']
-
-        has_dtxsid['display_name'] = has_dtxsid.apply(
-            lambda r: f"{r.get('canonical_name') or r['casrn']} (DTXSID: {r['dtxsid']})", axis=1
-        )
-
-        st.success(f"{len(has_dtxsid)} chemicals in our database have an EPA DTXSID — ready for live lookup.")
-
-        selected_display = st.selectbox(
-            "Pick a chemical to look up in CompTox:",
-            sorted(has_dtxsid['display_name'].tolist()),
-        )
-        sel_row = has_dtxsid[has_dtxsid['display_name'] == selected_display].iloc[0]
-        dtxsid = sel_row['dtxsid']
-        casrn = sel_row['casrn']
-
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.markdown(f"**Chemical ID (CAS #):** {casrn}")
-            st.markdown(f"**EPA ID (DTXSID):** {dtxsid}")
-        with col_b:
-            # Regulatory flags from our own warehouse
-            tsca = sel_row.get('tsca_listed', 'N/A')
-            prop65 = sel_row.get('prop65_listed', 'N/A')
-            iarc = sel_row.get('iarc_classification', 'N/A')
-            st.markdown(f"**On EPA TSCA List?** {tsca} *(TSCA = Toxic Substances Control Act)*")
-            st.markdown(f"**On California Prop 65 List?** {prop65} *(Prop 65 = California's list of chemicals known to cause cancer or birth defects)*")
-            st.markdown(f"**IARC Cancer Classification:** {iarc} *(1 = causes cancer, 2A = probably causes cancer, 2B = possibly causes cancer)*")
-
-        if st.button("Fetch Live Data from EPA CompTox API"):
-            with st.spinner("Contacting EPA CompTox API..."):
-                try:
-                    # CCTE API for chemical details
-                    url = f"https://api-ccte.epa.gov/chemical/detail/search/by-dtxsid/{dtxsid}"
-                    headers = {"accept": "application/json"}
-                    resp = requests.get(url, headers=headers, timeout=10)
-                    if resp.status_code == 200:
-                        result = resp.json()
-                        if result:
-                            st.success("Live data from EPA CompTox API:")
-                            display_fields = {
-                                'preferredName': 'Official Name',
-                                'iupacName': 'Scientific Name (IUPAC)',
-                                'smiles': 'Molecular Structure Code (SMILES)',
-                                'inchiString': 'InChI Identifier',
-                                'inchiKey': 'InChI Key',
-                                'monoisotopicMass': 'Molecular Mass',
-                                'molecularFormula': 'Molecular Formula',
-                                'qsarReadySmiles': 'QSAR-Ready SMILES (for prediction models)',
-                            }
-                            for field, label in display_fields.items():
-                                val = result.get(field)
-                                if val:
-                                    st.markdown(f"**{label}:** {val}")
-                        else:
-                            st.info("No additional data returned from the API for this chemical.")
-                    else:
-                        st.warning(f"API returned status {resp.status_code}. The CCTE API may require a free API key for some endpoints.")
-                        st.markdown(
-                            "To get a free EPA CCTE API key, visit: "
-                            "**https://api-ccte.epa.gov/** and click 'Sign Up'."
-                        )
-                except requests.exceptions.ConnectionError:
-                    st.error("Could not reach the EPA API. Check your internet connection.")
-                except Exception as ex:
-                    st.error(f"API error: {ex}")
-
-    st.divider()
-
-    # ── Integration Roadmap ──────────────────────────────────────────────────
-    st.subheader("How to Add These Tools to This Dashboard — Next Steps")
-
-    st.markdown("""
-Below is a practical roadmap for integrating each EPA tool more deeply into this dashboard.
-All of these tools have **free public APIs** or **bulk downloads**.
-
-| Tool | What to Add | How |
-|------|------------|-----|
-| **ToxCast** | A "ToxCast Hits" column per chemical showing how many assays it triggered | Fetch from `api-ccte.epa.gov/bioactivity/data/search/by-dtxsid/{dtxsid}` |
-| **GenRA** | Predicted toxicity for chemicals with no data | Use GenRA web tool or OPERA model outputs from CompTox bulk download |
-| **CompTox** | Chemical structure images + predicted properties | `api-ccte.epa.gov/chemical/detail/search/by-dtxsid/{dtxsid}` |
-| **ChemExpo** | "Found in X other products" exposure context | `api-ccte.epa.gov/exposure/product/search/by-dtxsid/{dtxsid}` |
-| **Cheminformatics** | Skin penetration + endocrine disruption predictions | Download OPERA bulk model predictions from CompTox DSSTox |
-
-### Recommended Priority Order:
-1. **CompTox** — Add DTXSID lookups to the Chemical detail view (structure, formula, basic properties)
-2. **ToxCast** — Add a "Bioactivity Score" metric per chemical (how many tests it triggered)
-3. **ChemExpo** — Add "National Exposure Context" — how common is this chemical in consumer products?
-4. **GenRA** — Use for chemicals missing GHS data to fill safety gaps
-5. **Cheminformatics (OPERA)** — Bulk-download OPERA predictions and join to our warehouse
-
-### Free Resources:
-- EPA CCTE API documentation: **api-ccte.epa.gov**
-- CompTox bulk downloads: **comptox.epa.gov/dashboard/downloads**
-- ToxCast data download: **epa.gov/chemical-research/toxcast-data**
-- ChemExpo source data: **chemexpo.epa.gov**
-- GenRA tool: **comptox.epa.gov/genra**
-    """)
-
-
 # ── Main App ──────────────────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -1187,7 +976,6 @@ pages = {
     "Brands": page_brands,
     "Categories": page_categories,
     "Chemical Name Matching": page_identity,
-    "EPA Research Tools": page_epa_tools,
 }
 
 page = st.sidebar.radio("Navigation", list(pages.keys()))

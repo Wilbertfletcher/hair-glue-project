@@ -3,5 +3,21 @@
     "allow": [
       "Bash(.venv/Scripts/python.exe -c \"from dotenv import load_dotenv; load_dotenv\\(\\); import os; print\\('Key loaded:', bool\\(os.getenv\\('CTX_API_KEY'\\)\\)\\)\")"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import json,sys; data=json.load(sys.stdin); cmd=data.get('tool_input',{}).get('command',''); exit(0) if 'git commit' not in cmd else None\" || cd \"c:\\\\Users\\\\admin\\\\Desktop\\\\Thesis\\\\hair-glue-project\\\\hair-glue-project\" && .venv/Scripts/python -m pytest tests/test_system.py -v --tb=short 2>&1",
+            "if": "Bash(git commit*)",
+            "timeout": 120,
+            "statusMessage": "Running system tests after commit..."
+          }
+        ]
+      }
+    ]
   }
 }

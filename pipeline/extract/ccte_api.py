@@ -1,52 +1,40 @@
 """
-EPA CCTE (Center for Computational Toxicology and Exposure) API Client
+EPA CCTE API Client — powered by ctx-python (ctxpy)
 
 Covers:
   - Chemical detail (structure, formula, mass) — CompTox
-  - Bioactivity data (ToxCast assay hits)
-  - Functional use / product-data (ChemExpo exposure)
+  - Bioactivity / toxicology study counts — ToxValDB
+  - Functional use / product-data — ChemExpo exposure
+  - Hazard data — ToxValDB
 
-Base URL: https://api-ccte.epa.gov/
-Auth:     x-api-key header (free key from api-ccte.epa.gov)
+Auth: CTX_API_KEY in .env
+  Free key: https://www.epa.gov/comptox-tools/
+            computational-toxicology-and-exposure-apis-about
 
-All functions cache results to data/raw/ccte_cache/ so repeated runs
-do not re-hit the API.
+All functions cache results to data/raw/ccte_cache/.
 """
 
 import os
 import json
 import hashlib
 import logging
-import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-import requests
+import ctxpy as ctx
 from dotenv import load_dotenv
-from pipeline.utils.http import RateLimiter, retry_with_backoff
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-CCTE_BASE = "https://comptox.epa.gov/ctx-api"
 CTX_API_KEY = os.getenv("CTX_API_KEY", "")
-
-HEADERS = {
-    "accept": "application/json",
-    "User-Agent": "HairGlueProject/1.0 (thesis-research)",
-}
-if CTX_API_KEY:
-    HEADERS["x-api-key"] = CTX_API_KEY
 
 CACHE_DIR = Path("data/raw/ccte_cache")
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-# CCTE recommends max 5 req/sec with a key; be conservative at 3/sec
-_rate_limiter = RateLimiter(max_calls=3, period=1.0)
 
-
-# ── Cache helpers ─────────────────────────────────────────────────────────────
+# ── Cache helpers ─────────────────────────────────────────────────────────
 
 def _cache_path(key: str) -> Path:
     return CACHE_DIR / f"{key}.json"
@@ -70,79 +58,124 @@ def _cache_key(*parts: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:24]
 
 
-# ── Core HTTP ─────────────────────────────────────────────────────────────────
-
-@_rate_limiter
-@retry_with_backoff
-def _get(path: str, params: Optional[dict] = None) -> Optional[Any]:
-    """GET from CCTE API. Returns parsed JSON or None on error."""
-    url = f"{CCTE_BASE}{path}"
-    try:
-        resp = requests.get(url, headers=HEADERS, params=params, timeout=20)
-        if resp.status_code == 200:
-            return resp.json()
-        if resp.status_code == 404:
-            return None  # chemical not found — not an error
-        logger.warning("CCTE GET %s → HTTP %d", path, resp.status_code)
-        return None
-    except requests.exceptions.RequestException as exc:
-        logger.error("CCTE GET %s failed: %s", path, exc)
-        return None
+def _make_chem() -> ctx.Chemical:
+    if CTX_API_KEY:
+        return ctx.Chemical(x_api_key=CTX_API_KEY)
+    return ctx.Chemical()
 
 
-# ── M3.1a: Chemical Detail ────────────────────────────────────────────────────
+def _make_expo() -> ctx.Exposure:
+    if CTX_API_KEY:
+        return ctx.Exposure(x_api_key=CTX_API_KEY)
+    return ctx.Exposure()
+
+
+def _make_hazard() -> ctx.Hazard:
+    if CTX_API_KEY:
+        return ctx.Hazard(x_api_key=CTX_API_KEY)
+    return ctx.Hazard()
+
+
+# ── M3.1a: Chemical Detail (CompTox) ──────────────────────────────────────
 
 def get_chemical_detail(dtxsid: str) -> Optional[Dict[str, Any]]:
     """
-    Fetch CompTox chemical detail for a single DTXSID.
+    Fetch CompTox chemical detail for a single DTXSID via ctxpy.
 
     Returns a flat dict with keys:
       dtxsid, preferred_name, iupac_name, smiles, inchi_key,
       inchi_string, molecular_formula, molecular_mass
-    or None if the DTXSID is not found.
+    or None if not found.
     """
     key = _cache_key("detail", dtxsid)
     cached = _load_cache(key)
     if cached is not None:
-        return cached or None  # {} stored as cache-miss sentinel
+        return cached or None
 
-    data = _get(f"/chemical/detail/search/by-dtxsid/{dtxsid}")
-    if not data:
-        _save_cache(key, {})  # sentinel — don't re-query
+    try:
+        chem = _make_chem()
+        df = chem.details(by="dtxsid", query=dtxsid)
+        if df is None or (hasattr(df, "__len__") and len(df) == 0):
+            _save_cache(key, {})
+            return None
+
+        row = df.iloc[0] if hasattr(df, "iloc") else df
+        result = {
+            "dtxsid": dtxsid,
+            "preferred_name": _get(row, "preferredName"),
+            "iupac_name": _get(row, "iupacName"),
+            "smiles": _get(row, "smiles"),
+            "inchi_key": _get(row, "inchiKey"),
+            "inchi_string": _get(row, "inchiString"),
+            "molecular_formula": _get(row, "molecularFormula"),
+            "molecular_mass": _get(row, "monoisotopicMass"),
+        }
+        _save_cache(key, result)
+        logger.info(
+            "CompTox detail: %s — %s",
+            dtxsid,
+            result.get("preferred_name", "?"),
+        )
+        return result
+    except Exception as exc:
+        logger.error("CompTox detail failed for %s: %s", dtxsid, exc)
+        _save_cache(key, {})
         return None
 
-    result = {
-        "dtxsid": dtxsid,
-        "preferred_name": data.get("preferredName"),
-        "iupac_name": data.get("iupacName"),
-        "smiles": data.get("smiles"),
-        "inchi_key": data.get("inchiKey"),
-        "inchi_string": data.get("inchiString"),
-        "molecular_formula": data.get("molecularFormula"),
-        "molecular_mass": data.get("monoisotopicMass"),
-    }
-    _save_cache(key, result)
-    return result
+
+def get_chemical_details_batch(
+    dtxsid_list: List[str],
+) -> List[Dict[str, Any]]:
+    """Fetch chemical detail for a list of DTXSIDs, falling back to individual."""
+    key = _cache_key("detail_batch", *sorted(dtxsid_list))
+    cached = _load_cache(key)
+    if cached is not None:
+        return cached
+
+    try:
+        chem = _make_chem()
+        df = chem.details(by="batch", query=dtxsid_list)
+        if df is None or len(df) == 0:
+            return []
+
+        results = []
+        for _, row in df.iterrows():
+            sid = _get(row, "dtxsid") or _get(row, "id") or ""
+            results.append({
+                "dtxsid": sid,
+                "preferred_name": _get(row, "preferredName"),
+                "iupac_name": _get(row, "iupacName"),
+                "smiles": _get(row, "smiles"),
+                "inchi_key": _get(row, "inchiKey"),
+                "inchi_string": _get(row, "inchiString"),
+                "molecular_formula": _get(row, "molecularFormula"),
+                "molecular_mass": _get(row, "monoisotopicMass"),
+            })
+        _save_cache(key, results)
+        logger.info(
+            "CompTox batch: %d/%d returned",
+            len(results),
+            len(dtxsid_list),
+        )
+        return results
+    except Exception as exc:
+        logger.warning(
+            "Batch detail failed (%s), falling back to individual", exc
+        )
+        return [
+            r for dtxsid in dtxsid_list
+            if (r := get_chemical_detail(dtxsid))
+        ]
 
 
-def get_chemical_details_batch(dtxsid_list: List[str]) -> List[Dict[str, Any]]:
-    """Fetch chemical detail for a list of DTXSIDs. Returns list of dicts."""
-    results = []
-    for dtxsid in dtxsid_list:
-        detail = get_chemical_detail(dtxsid)
-        if detail:
-            results.append(detail)
-            logger.info("CompTox detail: %s — %s", dtxsid, detail.get("preferred_name", "?"))
-        else:
-            logger.warning("CompTox detail: %s — not found", dtxsid)
-    return results
-
-
-# ── M3.1b: ToxCast Bioactivity ────────────────────────────────────────────────
+# ── M3.1b: ToxValDB Bioactivity ───────────────────────────────────────────
 
 def get_bioactivity(dtxsid: str) -> Dict[str, Any]:
     """
-    Fetch ToxCast bioactivity summary for a single DTXSID.
+    Fetch toxicological study data from ToxValDB for a single DTXSID.
+
+    Counts how many study records exist and how many carry a hazard value,
+    as a proxy for bioactivity / concern level.
 
     Returns a dict with:
       dtxsid, assays_tested, assays_active, activity_score,
@@ -153,8 +186,6 @@ def get_bioactivity(dtxsid: str) -> Dict[str, Any]:
     if cached is not None:
         return cached
 
-    data = _get(f"/bioactivity/data/search/by-dtxsid/{dtxsid}")
-
     result: Dict[str, Any] = {
         "dtxsid": dtxsid,
         "assays_tested": 0,
@@ -163,47 +194,77 @@ def get_bioactivity(dtxsid: str) -> Dict[str, Any]:
         "top_hit_categories": None,
     }
 
-    if data:
-        # The CCTE bioactivity endpoint returns a list of assay records
-        records = data if isinstance(data, list) else data.get("data", [])
-        tested = len(records)
-        active_records = [r for r in records if r.get("hitCall") == 1
-                          or str(r.get("hitCall", "")).lower() == "active"]
-        active = len(active_records)
+    try:
+        haz = _make_hazard()
+        df = haz.search_toxvaldb(by="all", dtxsid=dtxsid)
 
-        # Collect endpoint category names from active hits
-        categories = []
-        for r in active_records:
-            cat = r.get("endpointCategory") or r.get("aeid") or r.get("assayEndpointName")
-            if cat and str(cat) not in categories:
-                categories.append(str(cat))
+        if df is not None and len(df) > 0:
+            tested = len(df)
 
-        result["assays_tested"] = tested
-        result["assays_active"] = active
-        result["activity_score"] = round(active / tested, 4) if tested > 0 else 0.0
-        result["top_hit_categories"] = "|".join(categories[:10]) if categories else None
+            active_cols = [
+                "cancerCall",
+                "cancerClassification",
+                "toxvalNumeric",
+                "criticalEffect",
+            ]
 
-        logger.info(
-            "ToxCast: %s — %d tested, %d active (score=%.3f)",
-            dtxsid, tested, active, result["activity_score"],
-        )
-    else:
-        logger.warning("ToxCast: %s — no data returned", dtxsid)
+            def _has_value(row):
+                return any(
+                    row[c] is not None
+                    and str(row[c]).strip() not in ("", "<NA>", "nan")
+                    for c in active_cols
+                    if c in row.index
+                )
+
+            active_mask = df.apply(_has_value, axis=1)
+            active = int(active_mask.sum())
+
+            categories: List[str] = []
+            for col in (
+                "source", "studyType", "toxvalType", "studyDuration"
+            ):
+                if col in df.columns:
+                    cats = (
+                        df[col].dropna().astype(str).unique().tolist()
+                    )
+                    categories.extend(
+                        c for c in cats
+                        if c and c not in categories
+                    )
+
+            result["assays_tested"] = tested
+            result["assays_active"] = active
+            result["activity_score"] = (
+                round(active / tested, 4) if tested > 0 else 0.0
+            )
+            result["top_hit_categories"] = (
+                "|".join(categories[:10]) if categories else None
+            )
+            logger.info(
+                "ToxValDB: %s — %d records, %d with hazard values",
+                dtxsid, tested, active,
+            )
+        else:
+            logger.warning("ToxValDB: %s — no data", dtxsid)
+    except Exception as exc:
+        logger.error("ToxValDB failed for %s: %s", dtxsid, exc)
 
     _save_cache(key, result)
     return result
 
 
-def get_bioactivity_batch(dtxsid_list: List[str]) -> List[Dict[str, Any]]:
-    """Fetch ToxCast bioactivity for a list of DTXSIDs."""
+def get_bioactivity_batch(
+    dtxsid_list: List[str],
+) -> List[Dict[str, Any]]:
+    """Fetch ToxValDB bioactivity for a list of DTXSIDs."""
     return [get_bioactivity(dtxsid) for dtxsid in dtxsid_list]
 
 
-# ── M3.1c: ChemExpo Exposure Data ─────────────────────────────────────────────
+# ── M3.1c: ChemExpo Exposure Data ─────────────────────────────────────────
 
 def get_functional_use(dtxsid: str) -> Dict[str, Any]:
     """
-    Fetch ChemExpo functional use data for a single DTXSID.
+    Fetch ChemExpo functional use data for a single DTXSID via ctxpy.
 
     Returns a dict with:
       dtxsid, functional_uses (pipe-delimited), use_count
@@ -213,26 +274,40 @@ def get_functional_use(dtxsid: str) -> Dict[str, Any]:
     if cached is not None:
         return cached
 
-    data = _get(f"/exposure/functional-use/search/by-dtxsid/{dtxsid}")
-
     result: Dict[str, Any] = {
         "dtxsid": dtxsid,
         "functional_uses": None,
         "use_count": 0,
     }
 
-    if data:
-        records = data if isinstance(data, list) else data.get("data", [])
-        uses = []
-        for r in records:
-            use = r.get("functionalUse") or r.get("use") or r.get("reportedFunctionalUse")
-            if use and str(use) not in uses:
-                uses.append(str(use))
-        result["functional_uses"] = "|".join(uses) if uses else None
-        result["use_count"] = len(records)
-        logger.info("ChemExpo functional use: %s — %d records", dtxsid, len(records))
-    else:
-        logger.warning("ChemExpo functional use: %s — no data", dtxsid)
+    try:
+        expo = _make_expo()
+        df = expo.search_cpdat(vocab_name="fc", dtxsid=dtxsid)
+        if df is not None and len(df) > 0:
+            uses: List[str] = []
+            for col in (
+                "functionalUse",
+                "use",
+                "reportedFunctionalUse",
+                "harmonizedFunctionalUse",
+            ):
+                if col in df.columns:
+                    uses = df[col].dropna().astype(str).unique().tolist()
+                    break
+            result["functional_uses"] = "|".join(uses) if uses else None
+            result["use_count"] = len(df)
+            logger.info(
+                "ChemExpo functional use: %s — %d records",
+                dtxsid, len(df),
+            )
+        else:
+            logger.warning(
+                "ChemExpo functional use: %s — no data", dtxsid
+            )
+    except Exception as exc:
+        logger.error(
+            "ChemExpo functional use failed for %s: %s", dtxsid, exc
+        )
 
     _save_cache(key, result)
     return result
@@ -240,18 +315,15 @@ def get_functional_use(dtxsid: str) -> Dict[str, Any]:
 
 def get_product_data(dtxsid: str) -> Dict[str, Any]:
     """
-    Fetch ChemExpo product-level data for a single DTXSID.
+    Fetch ChemExpo product-use category (PUC) data for a single DTXSID.
 
     Returns a dict with:
-      dtxsid, product_categories (pipe-delimited),
-      national_product_count
+      dtxsid, product_categories (pipe-delimited), national_product_count
     """
     key = _cache_key("proddata", dtxsid)
     cached = _load_cache(key)
     if cached is not None:
         return cached
-
-    data = _get(f"/exposure/product-data/search/by-dtxsid/{dtxsid}")
 
     result: Dict[str, Any] = {
         "dtxsid": dtxsid,
@@ -259,36 +331,112 @@ def get_product_data(dtxsid: str) -> Dict[str, Any]:
         "national_product_count": 0,
     }
 
-    if data:
-        records = data if isinstance(data, list) else data.get("data", [])
-        cats = []
-        for r in records:
-            cat = (
-                r.get("productCategory")
-                or r.get("puc")
-                or r.get("generalCategory")
+    try:
+        expo = _make_expo()
+        df = expo.search_cpdat(vocab_name="puc", dtxsid=dtxsid)
+        if df is not None and len(df) > 0:
+            cats: List[str] = []
+            for col in (
+                "productCategory",
+                "puc",
+                "generalCategory",
+                "productUseCategory",
+            ):
+                if col in df.columns:
+                    cats = df[col].dropna().astype(str).unique().tolist()
+                    break
+            result["product_categories"] = (
+                "|".join(cats) if cats else None
             )
-            if cat and str(cat) not in cats:
-                cats.append(str(cat))
-        result["product_categories"] = "|".join(cats) if cats else None
-        result["national_product_count"] = len(records)
-        logger.info("ChemExpo product data: %s — %d products", dtxsid, len(records))
-    else:
-        logger.warning("ChemExpo product data: %s — no data", dtxsid)
+            result["national_product_count"] = len(df)
+            logger.info(
+                "ChemExpo product data: %s — %d records",
+                dtxsid, len(df),
+            )
+        else:
+            logger.warning(
+                "ChemExpo product data: %s — no data", dtxsid
+            )
+    except Exception as exc:
+        logger.error(
+            "ChemExpo product data failed for %s: %s", dtxsid, exc
+        )
 
     _save_cache(key, result)
     return result
 
 
-def get_chemexpo_batch(dtxsid_list: List[str]) -> List[Dict[str, Any]]:
+def get_chemexpo_batch(
+    dtxsid_list: List[str],
+) -> List[Dict[str, Any]]:
     """
-    Fetch combined ChemExpo data (functional use + product data) for a list of DTXSIDs.
-    Returns merged dicts.
+    Fetch combined ChemExpo data (functional use + product data)
+    for a list of DTXSIDs.
     """
     results = []
     for dtxsid in dtxsid_list:
         func = get_functional_use(dtxsid)
         prod = get_product_data(dtxsid)
-        merged = {**func, **{k: v for k, v in prod.items() if k != "dtxsid"}}
+        merged = {
+            **func,
+            **{k: v for k, v in prod.items() if k != "dtxsid"},
+        }
         results.append(merged)
     return results
+
+
+# ── Bonus: Hazard / ToxValDB cancer search ────────────────────────────────
+
+def get_hazard_summary(dtxsid: str) -> Dict[str, Any]:
+    """
+    Fetch ToxValDB cancer-call data for a single DTXSID via ctxpy.
+
+    Returns a dict with:
+      dtxsid, cancer_classification, tox_summary, record_count
+    """
+    key = _cache_key("hazard", dtxsid)
+    cached = _load_cache(key)
+    if cached is not None:
+        return cached
+
+    result: Dict[str, Any] = {
+        "dtxsid": dtxsid,
+        "cancer_classification": None,
+        "tox_summary": None,
+        "record_count": 0,
+    }
+
+    try:
+        haz = _make_hazard()
+        df = haz.search_toxvaldb(by="cancer", dtxsid=dtxsid)
+        if df is not None and len(df) > 0:
+            result["record_count"] = len(df)
+            for col in (
+                "cancerClassification",
+                "cancer_classification",
+                "cancerCall",
+            ):
+                if col in df.columns:
+                    vals = df[col].dropna().astype(str).unique().tolist()
+                    result["cancer_classification"] = (
+                        "|".join(vals) if vals else None
+                    )
+                    break
+            logger.info("Hazard: %s — %d records", dtxsid, len(df))
+        else:
+            logger.warning("Hazard: %s — no data", dtxsid)
+    except Exception as exc:
+        logger.error("Hazard search failed for %s: %s", dtxsid, exc)
+
+    _save_cache(key, result)
+    return result
+
+
+# ── Internal helper ───────────────────────────────────────────────────────
+
+def _get(row, key: str):
+    """Safe getter for both dict-like and Series rows."""
+    try:
+        return row[key] if key in row else None
+    except Exception:
+        return None
