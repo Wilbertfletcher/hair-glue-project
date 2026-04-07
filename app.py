@@ -33,7 +33,14 @@ def draw_smiles_svg(
     ):
         return ''
     try:
-        mol = Chem.MolFromSmiles(str(smiles).strip())
+        # Strip extended Daylight CXSMILES notation (anything after a space)
+        clean = str(smiles).strip().split(' ')[0]
+        mol = Chem.MolFromSmiles(clean)
+        # If disconnected fragments (e.g. ionic form), pick the largest fragment
+        if mol is None and '.' in clean:
+            fragments = clean.split('.')
+            largest = max(fragments, key=len)
+            mol = Chem.MolFromSmiles(largest)
         if mol is None:
             return ''
         drawer = rdMolDraw2D.MolDraw2DSVG(width, height)
