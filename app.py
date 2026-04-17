@@ -8,11 +8,26 @@ Run:
     streamlit run app.py
 """
 
+import logging
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+_LOGS_DIR = Path("logs")
+_LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
+    handlers=[
+        logging.FileHandler(_LOGS_DIR / "app.log", mode="a", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger("hair_glue.app")
 
 try:
     from rdkit import Chem
@@ -132,8 +147,10 @@ def load_data():
         path = WAREHOUSE / fname
         if path.exists():
             data[key] = pd.read_parquet(path)
+            logger.info("Loaded %-22s  %d rows", fname, len(data[key]))
         else:
             data[key] = pd.DataFrame()
+            logger.warning("Missing warehouse file: %s", fname)
     return data
 
 
@@ -689,6 +706,7 @@ def page_chemicals(data):
                 unsafe_allow_html=True,
             )
         else:
+            logger.warning("Structure render failed for SMILES: %s", str(smiles)[:120])
             st.caption("Structure could not be rendered.")
 
     # Row 4 — EPA IRIS federal risk data
@@ -1136,11 +1154,13 @@ st.sidebar.markdown("- ECHA REACH (European chemical registry)")
 st.sidebar.divider()
 st.sidebar.caption(f"Products tracked: {len(data['products'])} | Chemicals identified: {len(data['ref_chemicals'])}")
 
+logger.info("Page navigation → %s", page)
 try:
     pages[page](data)
 except Exception as e:
     if "Rerun" in type(e).__name__ or "Stop" in type(e).__name__:
         raise
+    logger.exception("Unhandled error on page '%s': %s", page, e)
     st.error(f"Error loading page: {e}")
     import traceback
     st.code(traceback.format_exc())
