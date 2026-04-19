@@ -31,10 +31,17 @@ logger = logging.getLogger("hair_glue.app")
 
 try:
     from rdkit import Chem
+    from rdkit.Chem import AllChem
     from rdkit.Chem.Draw import rdMolDraw2D
     RDKIT_OK = True
 except ImportError:
     RDKIT_OK = False
+
+try:
+    import py3Dmol
+    PY3DMOL_OK = True
+except ImportError:
+    PY3DMOL_OK = False
 
 
 def draw_smiles_svg(
@@ -63,6 +70,34 @@ def draw_smiles_svg(
         drawer.DrawMolecule(mol)
         drawer.FinishDrawing()
         return drawer.GetDrawingText()
+    except Exception:
+        return ''
+
+
+def draw_smiles_3d_html(smiles: str, width: int = 400, height: int = 300) -> str:
+    """Return an HTML string with an interactive py3Dmol 3D viewer, or '' on failure."""
+    if not RDKIT_OK or not PY3DMOL_OK or not smiles or str(smiles).strip() in ('', 'nan', 'None'):
+        return ''
+    try:
+        clean = str(smiles).strip().split(' ')[0]
+        mol = Chem.MolFromSmiles(clean)
+        if mol is None and '.' in clean:
+            mol = Chem.MolFromSmiles(max(clean.split('.'), key=len))
+        if mol is None:
+            return ''
+        mol = Chem.AddHs(mol)
+        result = AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        if result != 0:
+            # fallback: distance geometry without ETKDG
+            AllChem.EmbedMolecule(mol)
+        AllChem.MMFFOptimizeMolecule(mol)
+        mol_block = Chem.MolToMolBlock(mol)
+        viewer = py3Dmol.view(width=width, height=height)
+        viewer.addModel(mol_block, 'sdf')
+        viewer.setStyle({'stick': {'radius': 0.15}, 'sphere': {'scale': 0.25}})
+        viewer.setBackgroundColor('white')
+        viewer.zoomTo()
+        return viewer._make_html()
     except Exception:
         return ''
 
@@ -692,22 +727,44 @@ def page_chemicals(data):
             ),
         )
 
-    # Row 3 — chemical structure
+    # Row 3 — chemical structure (2D + interactive 3D)
     smiles = chem_row.get('smiles')
-    svg = draw_smiles_svg(str(smiles) if smiles else '', width=260, height=180)
     if smiles and str(smiles) not in ('nan', 'None', ''):
+        clean_smiles = str(smiles).strip().split(' ')[0]
         st.divider()
-        st.markdown("**2D Chemical Structure**")
-        st.markdown(f"**`{str(smiles)[:120]}`**")
-        if svg:
-            st.markdown(
-                f'<div style="background:#fff;padding:6px;border-radius:6px;'
-                f'display:inline-block;margin-top:6px">{svg}</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            logger.warning("Structure render failed for SMILES: %s", str(smiles)[:120])
-            st.caption("Structure could not be rendered.")
+        st.markdown("**Molecular Structure**")
+        # SMILES key — full string, copyable
+        st.markdown("**SMILES Key**")
+        st.code(str(smiles), language=None)
+
+        tab_2d, tab_3d = st.tabs(["2D Structure", "3D Interactive"])
+
+        with tab_2d:
+            svg = draw_smiles_svg(str(smiles), width=320, height=220)
+            if svg:
+                st.markdown(
+                    f'<div style="background:#fff;padding:8px;border-radius:8px;'
+                    f'display:inline-block;margin-top:4px">{svg}</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                logger.warning("2D render failed for SMILES: %s", clean_smiles[:120])
+                st.caption("2D structure could not be rendered.")
+
+        with tab_3d:
+            if PY3DMOL_OK:
+                html_3d = draw_smiles_3d_html(str(smiles), width=480, height=340)
+                if html_3d:
+                    st.components.v1.html(html_3d, width=490, height=350, scrolling=False)
+                    st.caption(
+                        "Interactive 3D model — click and drag to rotate, "
+                        "scroll to zoom. Hydrogen atoms shown."
+                    )
+                else:
+                    logger.warning("3D render failed for SMILES: %s", clean_smiles[:120])
+                    st.caption("3D structure could not be generated for this molecule.")
+            else:
+                st.caption("Install py3Dmol for 3D visualization: pip install py3Dmol")
 
     # Row 4 — EPA IRIS federal risk data
     if len(iris) > 0 and 'casrn' in iris.columns:

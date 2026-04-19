@@ -7,3 +7,4 @@ ctx-python>=0.0.1a10
 python-dotenv>=1.0.0
 rdkit>=2024.0.0
 pytest>=9.0.0
+py3Dmol>=2.0.0
