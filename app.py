@@ -20,7 +20,7 @@ _LOGS_DIR = Path("logs")
 _LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
     handlers=[
         logging.FileHandler(_LOGS_DIR / "app.log", mode="a", encoding="utf-8"),
@@ -76,7 +76,10 @@ def draw_smiles_svg(
 
 def draw_smiles_3d_html(smiles: str, width: int = 400, height: int = 300) -> str:
     """Return an HTML string with an interactive py3Dmol 3D viewer, or '' on failure."""
-    if not RDKIT_OK or not PY3DMOL_OK or not smiles or str(smiles).strip() in ('', 'nan', 'None'):
+    if not RDKIT_OK or not PY3DMOL_OK:
+        logger.warning("3D render skipped: RDKIT_OK=%s PY3DMOL_OK=%s", RDKIT_OK, PY3DMOL_OK)
+        return ''
+    if not smiles or str(smiles).strip() in ('', 'nan', 'None'):
         return ''
     try:
         clean = str(smiles).strip().split(' ')[0]
@@ -84,12 +87,17 @@ def draw_smiles_3d_html(smiles: str, width: int = 400, height: int = 300) -> str
         if mol is None and '.' in clean:
             mol = Chem.MolFromSmiles(max(clean.split('.'), key=len))
         if mol is None:
+            logger.warning("3D render: MolFromSmiles returned None for: %s", clean[:80])
             return ''
         mol = Chem.AddHs(mol)
         result = AllChem.EmbedMolecule(mol, AllChem.ETKDGv3())
+        logger.debug("ETKDGv3 result=%d for %s", result, clean[:60])
         if result != 0:
-            # fallback: distance geometry without ETKDG
-            AllChem.EmbedMolecule(mol)
+            result = AllChem.EmbedMolecule(mol, randomSeed=42)
+            logger.debug("fallback embed result=%d for %s", result, clean[:60])
+        if result != 0:
+            logger.warning("3D render: EmbedMolecule failed (result=%d) for: %s", result, clean[:80])
+            return ''
         AllChem.MMFFOptimizeMolecule(mol)
         mol_block = Chem.MolToMolBlock(mol)
         viewer = py3Dmol.view(width=width, height=height)
@@ -97,8 +105,11 @@ def draw_smiles_3d_html(smiles: str, width: int = 400, height: int = 300) -> str
         viewer.setStyle({'stick': {'radius': 0.15}, 'sphere': {'scale': 0.25}})
         viewer.setBackgroundColor('white')
         viewer.zoomTo()
-        return viewer._make_html()
-    except Exception:
+        html = viewer._make_html()
+        logger.info("3D render OK len=%d for %s", len(html), clean[:60])
+        return html
+    except Exception as exc:
+        logger.exception("3D render exception for '%s': %s", str(smiles)[:80], exc)
         return ''
 
 
@@ -753,18 +764,35 @@ def page_chemicals(data):
 
         with tab_3d:
             if PY3DMOL_OK:
-                html_3d = draw_smiles_3d_html(str(smiles), width=480, height=340)
-                if html_3d:
-                    st.components.v1.html(html_3d, width=490, height=350, scrolling=False)
-                    st.caption(
-                        "Interactive 3D model — click and drag to rotate, "
-                        "scroll to zoom. Hydrogen atoms shown."
+                try:
+                    html_3d = draw_smiles_3d_html(
+                        str(smiles), width=480, height=340
                     )
-                else:
-                    logger.warning("3D render failed for SMILES: %s", clean_smiles[:120])
-                    st.caption("3D structure could not be generated for this molecule.")
+                    if html_3d:
+                        import streamlit.components.v1 as components
+                        components.html(
+                            html_3d, width=490, height=350, scrolling=False
+                        )
+                        st.caption(
+                            "Click and drag to rotate · Scroll to zoom"
+                        )
+                    else:
+                        logger.warning(
+                            "3D render returned empty for: %s",
+                            clean_smiles[:120],
+                        )
+                        st.caption(
+                            "3D structure could not be generated for this "
+                            "molecule."
+                        )
+                except Exception as _3d_exc:
+                    logger.exception("3D tab exception: %s", _3d_exc)
+                    st.caption(f"3D error: {_3d_exc}")
             else:
-                st.caption("Install py3Dmol for 3D visualization: pip install py3Dmol")
+                st.caption(
+                    "Install py3Dmol for 3D visualization: "
+                    "pip install py3Dmol"
+                )
 
     # Row 4 — EPA IRIS federal risk data
     if len(iris) > 0 and 'casrn' in iris.columns:
