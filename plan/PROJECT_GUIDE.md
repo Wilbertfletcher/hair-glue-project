@@ -31,7 +31,7 @@ streamlit run app.py
 **Local URL (when running):**
 http://localhost:8501
 
-The dashboard has 6 pages:
+The dashboard has 7 pages:
 
 | Page | What It Shows |
 |------|--------------|
@@ -40,6 +40,7 @@ The dashboard has 6 pages:
 | **Chemicals** | Search chemicals by CAS number or name; view GHS hazard profile and which products contain each chemical |
 | **Brands** | Brand hazard rankings, sortable by avg score, max score, carcinogen count, etc. |
 | **Categories** | Side-by-side category hazard comparison; % high hazard and % carcinogen breakdowns |
+| **Certifications** | Certification readiness — what EWG VERIFIED, Cradle to Cradle Certified and the Living Product Challenge require, and an unofficial pre-screen of every product against their published ingredient rules (see `docs/CERTIFICATIONS.md`) |
 | **Identity Resolution** | Coverage statistics — how each ingredient was matched (CAS lookup, PubChem search, manual mapping) |
 
 ---

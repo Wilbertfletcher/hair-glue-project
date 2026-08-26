@@ -44,6 +44,34 @@ See `plan/ROADMAP-M3.md` for full spec.
 > Append new entries at the **top** of this list. Do not delete old entries.
 
 
+### 2026-08-26 — Certification readiness screening (Session 9)
+
+- **New dashboard page: Certifications.** Documents the three third-party
+  standards that apply to hair and personal care products, and pre-screens all
+  139 products against the ingredient rules each one publishes:
+  - **EWG VERIFIED** (Environmental Working Group) — full ingredient
+    disclosure, no chemicals of concern, strict transparency.
+  - **Cradle to Cradle Certified** — material health, product circularity and
+    environmental stewardship down to specific chemical safety thresholds.
+  - **The Living Product Challenge** (ILFI) — complete material health
+    transparency for consumer goods; rarer in hair care than in building
+    products.
+- **New module `certifications.py`** — standard metadata plus 13 screening
+  rules mapped onto the hazard/regulatory flags already in the warehouse
+  (GHS classes, Prop 65, IARC groups, REACH restrictions, named chemical
+  classes such as formaldehyde releasers, PFAS, phthalates, ethanolamines).
+  Each rule records severity **and the published basis** per standard.
+- Certification badges also added to the Product Browser detail view.
+- Screening result: 139/139 products blocked for EWG VERIFIED, 136 for
+  Cradle to Cradle, 6 for the Living Product Challenge (133 needing review).
+  Expected — CSCP only reports *hazardous* ingredients, so every product here
+  reports at least one chemical of concern. Page and docs say so prominently.
+- Tests: `tests/test_certifications.py` (21 tests, all passing).
+- Docs: `docs/CERTIFICATIONS.md` — method, limits, and how to add a rule.
+- **Limitation to carry forward:** this is an unofficial ingredient pre-screen.
+  Real certification also audits factories, packaging, supply chains, and
+  water/energy performance. Do not describe a product as "certifiable".
+
 ### 2026-04-02 — Dashboard overhaul + M3 roadmap (Session 8)
 
 - **Dashboard (app.py) OVERHAULED:**

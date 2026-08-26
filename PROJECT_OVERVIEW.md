@@ -48,7 +48,8 @@ A data analysis and chemical identity resolution pipeline for hair-glue and weav
   - `warehouse.db` — DuckDB database
 
 - **Interactive Dashboard:**
-  - [app.py](app.py) — Streamlit web app (6 pages: Overview, Product Browser, Chemical Database, Brand Risk, Category Analysis, Identity Resolution)
+  - [app.py](app.py) — Streamlit web app (7 pages: Overview, Product Browser, Chemical Database, Brand Risk, Category Analysis, Certification Readiness, Identity Resolution)
+  - [certifications.py](certifications.py) — Certification standards (EWG VERIFIED, Cradle to Cradle, Living Product Challenge) and the ingredient screening rules behind the Certifications page — see [docs/CERTIFICATIONS.md](docs/CERTIFICATIONS.md)
 
 - **Planning & Status:**
   - [plan/STATUS.md](plan/STATUS.md) — **Start here each session** (current milestone, blockers, next steps)
