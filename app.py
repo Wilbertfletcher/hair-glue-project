@@ -188,6 +188,7 @@ def load_data():
         "toxcast": "ref_chemicals_toxcast.parquet",
         "chemexpo": "ref_chemicals_chemexpo.parquet",
         "iris": "ref_chemicals_iris.parquet",
+        "nta": "ref_chemicals_nta.parquet",
     }
     for key, fname in files.items():
         path = WAREHOUSE / fname
@@ -552,6 +553,7 @@ def page_chemicals(data):
     chemexpo = data.get("chemexpo", pd.DataFrame())
     comptox = data.get("comptox", pd.DataFrame())
     iris = data.get("iris", pd.DataFrame())
+    nta = data.get("nta", pd.DataFrame())
 
     if len(ref) == 0:
         st.warning("No chemical reference data available.")
@@ -850,6 +852,40 @@ def page_chemicals(data):
                 st.caption(f"IRIS last revised: {revised}")
             if iris_url and str(iris_url) not in ('None', 'nan', ''):
                 st.markdown(f"[View full IRIS assessment]({iris_url})")
+
+    # Row 5 — measured in real products (non-targeted analysis literature)
+    if len(nta) > 0 and casrn:
+        nta_row = nta[nta['casrn'] == casrn]
+        if len(nta_row) > 0:
+            r = nta_row.iloc[0]
+            st.divider()
+            st.markdown("**Measured in Real Products (Lab Testing Studies)**")
+            st.caption(
+                "Labels only list what companies declare. Non-targeted "
+                "analysis (NTA) studies test products in a lab to see what "
+                "is actually inside. Source: UL Research Institutes, "
+                "Chemical Insights curated NTA dataset (2026)."
+            )
+            if r.get('nta_detected'):
+                st.success(
+                    f"Found by lab testing in {int(r['nta_study_count'])} "
+                    "published studies."
+                )
+                if r.get('nta_detected_in_personal_care'):
+                    st.markdown("- Detected in **personal-care products**")
+                examples = r.get('nta_product_examples')
+                if examples:
+                    st.markdown(f"- Example products tested: {examples}")
+                if r.get('nta_nhanes_yn'):
+                    st.markdown(
+                        "- Measured in people's bodies by the CDC (NHANES)"
+                    )
+            else:
+                st.info(
+                    "Not found in the published lab-testing studies. This "
+                    "does **not** mean it is absent — "
+                    f"{r.get('nta_blind_spot_note')}."
+                )
 
     # Row 6 — products in our database
     if len(identity) > 0 and casrn:

@@ -161,3 +161,33 @@ Selected Fields (in priority order):
 - Unblocks comprehensive chemical profiling for regulatory analysis
 
 **Source:** Pipeline expansion requirements + chemical data source evaluation (2026-03-25)
+
+---
+
+## DEC-014: Integrate UL Chemical Insights NTA Dataset as the "Measured Chemistry" Layer (M3.5)
+
+**Date:** 2026-09-24
+**Status:** Accepted
+
+**Context:** Every source through M3.1 (CSCP, PubChem, CompTox, ToxCast, REACH) describes
+chemicals that manufacturers *declared*. The Dangerous Beauty proposal's Aim 1 hinges on the
+gap between declared and *measured* composition, but the warehouse had no measured data.
+
+**Decision:** Load the Boatman, Ferland & Whitehead (2026) curated NTA dataset
+(release 2026-05-15) from a local copy of the workbook. Join to hair-glue chemicals on
+DTXSID, falling back to PubChem CID. Build a personal-care/adhesive suspect list for GC-MS
+screening.
+
+**Rules:**
+- Non-detection in NTA is never scored as "absent". Each non-detected chemical carries a
+  `nta_blind_spot_note` explaining the analytical reason (inorganic, too small or polar, UVCB).
+- Product tagging uses word-boundary keyword rules. "reported use: adhesive" in food-contact
+  studies does not count as an adhesive product.
+- NTA identities keep the confidence level of the original study. Treat them as candidate
+  (level B/C) identities unless the original study confirmed them against a standard.
+
+**Consequences:**
+- New files: `ref_nta_consumer_products.parquet`, `ref_chemicals_nta.parquet`,
+  `nta_personal_care_suspect_list.parquet`, `reports/M3.5_nta_crossref_report.md`
+- Dashboard Chemical Database page gains a "Measured in Real Products" panel
+- Citation added to `docs/LITERATURE.md` and to the proposal's `references.bib`

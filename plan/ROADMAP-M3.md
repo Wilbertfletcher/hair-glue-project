@@ -323,6 +323,53 @@ all report files for download.
 
 ---
 
+## Task M3.5: Non-Targeted Analysis (NTA) Cross-Reference — measured vs. declared
+
+**Status:** Done: 2026-09-24 (DEC-014)
+
+### Problem
+
+Every warehouse source describes what manufacturers *declared*. None describes what labs
+have *measured* in products, so the project couldn't test the "labels are incomplete" claim
+at the center of the proposal's Aim 1.
+
+### What was built
+
+- `pipeline/extract/nta_curation.py` loads the UL Research Institutes / Chemical Insights
+  curated NTA workbook (81 studies, 11,952 detections, 6,978 unique chemicals) and tags
+  personal-care and adhesive products.
+- `warehouse/source_nta_data.py` builds:
+  - `ref_nta_consumer_products.parquet`: the full typed table
+  - `ref_chemicals_nta.parquet`: one row per hair-glue chemical, with detected/not-detected
+    status, study count, example products, evidence flags, and a blind-spot note
+  - `nta_personal_care_suspect_list.parquet`: 2,050 chemicals measured in personal-care or
+    adhesive products, flagged for GC detection, EU fragrance allergen, phthalate, and
+    ToxCast/ToxValDB evidence gap
+- `reports/M3.5_nta_crossref_report.md`
+- Dashboard: "Measured in Real Products" panel on the Chemical Database page
+- Tests: `tests/test_nta_curation.py`
+
+### Key results
+
+- 5 of 13 hair-glue chemicals (styrene, myrcene, triethanolamine, NMP, BHA) have been measured
+  in consumer products. The other 8 fall in known LC/GC-HRMS blind spots: inorganic minerals,
+  formaldehyde, polar amines, and UVCB mixtures.
+- 20 of the 26 EU-declarable fragrance allergens have been measured in personal-care products.
+- 67% of personal-care NTA chemicals have no ToxCast or ToxValDB record.
+- **No curated NTA study analysed hair, lace, or lash adhesives.** This is the literature gap
+  the proposal fills.
+
+### Follow-on work (M3.5b–e)
+
+| ID | Task | Output |
+|----|------|--------|
+| M3.5b | Map `cpdat_category` codes to CPDat category names (download the CPDat PUC table) | `dim_cpdat_category.parquet` |
+| M3.5c | Pre-register the GC-MS suspect list: filter the suspect list to GC-amenable chemicals and add retention index and NIST availability | `gcms_suspect_list_v1.csv` for UL Solutions |
+| M3.5d | Run the same CSCP-vs-NTA comparison for *all* CSCP cosmetics (feeds M3.3 benchmarking) | declared-vs-measured overlap by category |
+| M3.5e | Pull CompTox hazard/ToxCast data for high-frequency suspect chemicals that have evidence | `ref_suspects_hazard.parquet` |
+
+---
+
 ## Recommended Task Order
 
 ```
@@ -357,6 +404,9 @@ M3.2 + M3.3 together provide the evidence base for M3.4.
 | `ref_chemicals_opera.parquet` | M3.1d | OPERA predicted toxicity |
 | `dim_demographics.parquet` | M3.2 | Demographic linkage per category |
 | `benchmark_categories.parquet` | M3.3 | Cross-category hazard comparison |
+| `ref_nta_consumer_products.parquet` | M3.5 | Curated NTA detections (UL Chemical Insights) |
+| `ref_chemicals_nta.parquet` | M3.5 | Hair-glue chemicals × NTA detection |
+| `nta_personal_care_suspect_list.parquet` | M3.5 | GC-MS suspect list / Aim 2 evidence gaps |
 
 ---
 

@@ -16,6 +16,7 @@ A data analysis and chemical identity resolution pipeline for hair-glue and weav
 
 - **Data Source:**
   - [data/raw/cscp_chemicals_in_cosmetics.csv](data/raw/cscp_chemicals_in_cosmetics.csv) — Main CSCP data (read-only)
+  - [data/raw/nta/](data/raw/nta/) — UL Chemical Insights curated NTA dataset (release 2026-05-15)
   - [data/curated/](data/curated/) — Curated Parquet outputs (dim_chemical, dim_product, bridge tables)
 
 - **Exploration & Filtering:**
@@ -39,12 +40,14 @@ A data analysis and chemical identity resolution pipeline for hair-glue and weav
   - [warehouse/build_market_analysis.py](warehouse/build_market_analysis.py) — Brand/market risk analysis (M1.3)
   - [warehouse/generate_m1_reports.py](warehouse/generate_m1_reports.py) — M1 report generation
   - [warehouse/source_regulatory_data.py](warehouse/source_regulatory_data.py) — ECHA regulatory data sourcing (M2.3)
+  - [warehouse/source_nta_data.py](warehouse/source_nta_data.py) — NTA measured-chemistry cross-reference (M3.5)
 
 - **Warehouse Outputs (Parquet):**
   - `warehouse/dim_products.parquet`, `dim_ingredients.parquet`, `dim_brands.parquet`, `dim_hazard_classes.parquet`
   - `warehouse/fact_product_ingredients.parquet`, `fact_chemical_hazards.parquet`
   - `warehouse/ref_chemicals.parquet`, `ref_chemicals_hazard.parquet`, `ref_chemicals_regulatory.parquet`
   - `warehouse/ingredient_identity_matched.parquet`, `product_hazard_summary.parquet`, `category_hazard_analysis.parquet`
+  - `warehouse/ref_nta_consumer_products.parquet`, `ref_chemicals_nta.parquet`, `nta_personal_care_suspect_list.parquet` (M3.5)
   - `warehouse.db` — DuckDB database
 
 - **Interactive Dashboard:**
@@ -63,6 +66,7 @@ A data analysis and chemical identity resolution pipeline for hair-glue and weav
 - **Documentation:**
   - [docs/DECISIONS.md](docs/DECISIONS.md) — Authoritative design decisions (DEC-001 through DEC-005)
   - [docs/CTX_ENRICHMENT.md](docs/CTX_ENRICHMENT.md) — CompTox CTX API enrichment notes
+  - [docs/LITERATURE.md](docs/LITERATURE.md) — Literature & data-source citations
 
 - **Reports:**
   - [reports/M0.3_identity_resolution_report.md](reports/M0.3_identity_resolution_report.md)
@@ -72,6 +76,7 @@ A data analysis and chemical identity resolution pipeline for hair-glue and weav
   - [reports/M1_hazard_inventory.md](reports/M1_hazard_inventory.md), [M1_market_trends.md](reports/M1_market_trends.md), [M1_regulatory_summary.md](reports/M1_regulatory_summary.md)
   - [reports/M2.1_fallback_resolution_report.md](reports/M2.1_fallback_resolution_report.md)
   - [reports/M2.3_regulatory_data_report.md](reports/M2.3_regulatory_data_report.md)
+  - [reports/M3.5_nta_crossref_report.md](reports/M3.5_nta_crossref_report.md)
 
 - **Tests:**
   - [tests/](tests/) — Unit tests (pytest)

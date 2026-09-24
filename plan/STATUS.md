@@ -6,7 +6,7 @@
 
 ---
 
-## Last Updated: 2026-04-02 (session 8 — dashboard overhaul + M3 roadmap defined)
+## Last Updated: 2026-09-24 (session 9 — M3.5 NTA measured-chemistry integration)
 
 ## Current Milestone: M3 — EPA Data Integration, Exposure Analysis & Public Report
 
@@ -42,6 +42,23 @@ See `plan/ROADMAP-M3.md` for full spec.
 ## Session History
 
 > Append new entries at the **top** of this list. Do not delete old entries.
+
+
+### 2026-09-24 — M3.5 NTA cross-reference (Session 9)
+
+- **NEW SOURCE:** UL Research Institutes / Chemical Insights curated NTA dataset
+  (Boatman, Ferland & Whitehead 2026, release 2026-05-15) at
+  `data/raw/nta/`. Decision: DEC-014.
+- Added `pipeline/extract/nta_curation.py` and `warehouse/source_nta_data.py`
+  (`PYTHONPATH=. python warehouse/source_nta_data.py`)
+- Outputs: `ref_nta_consumer_products`, `ref_chemicals_nta`,
+  `nta_personal_care_suspect_list` parquet files + `reports/M3.5_nta_crossref_report.md`
+- Results: 5/13 hair-glue chemicals measured by NTA; 20/26 EU fragrance allergens
+  measured in personal-care products; 67% of personal-care NTA chemicals lack
+  ToxCast/ToxValDB data. No NTA study covered hair/lash adhesives.
+- Dashboard: "Measured in Real Products" panel on the Chemical Database page
+- Tests: `tests/test_nta_curation.py` (4 passing)
+- Literature page created: `docs/LITERATURE.md`
 
 
 ### 2026-04-02 — Dashboard overhaul + M3 roadmap (Session 8)
@@ -200,6 +217,12 @@ No open blockers.
 | 2.3 — ECHA REACH registration data | Done: 2026-03-28 | ECHA bulk export approach (DEC-009); 12/14 matched; `ref_chemicals_reach.parquet` |
 | 2.4 — Interactive dashboard | Done: 2026-03-28 | Streamlit app (`app.py`) with 6 pages; `streamlit run app.py` |
 | 2.4 — Enhanced reports | Done: 2026-03-28 | M2_chemical_profiles, M2_coverage_summary, M2_enrichment_delta |
+
+### Milestone 3 — EPA Data Integration, Exposure Analysis & Public Report
+
+| Task | Completed | Notes |
+| ---- | --------- | ----- |
+| 3.5 — NTA cross-reference (measured vs. declared) | Done: 2026-09-24 | DEC-014; follow-ons M3.5b–e in ROADMAP-M3 |
 
 ---
 
