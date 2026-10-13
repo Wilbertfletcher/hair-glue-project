@@ -15,6 +15,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from pathlib import Path
 
+import certifications as certs
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 _LOGS_DIR = Path("logs")
 _LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -159,6 +161,19 @@ GLOSSARY = {
     "Chemical Name Matching": (
         "The process of figuring out the real identity of an ingredient "
         "listed on a product label."
+    ),
+    "Certification (Third-Party Label)": (
+        "A seal from an independent organization that checks a product "
+        "against a published safety or sustainability standard before the "
+        "maker is allowed to put the label on the bottle."
+    ),
+    "Restricted Substance List": (
+        "The list of chemicals a certification program bans or limits. If a "
+        "product contains one, it cannot earn that label."
+    ),
+    "Full Ingredient Disclosure": (
+        "Naming every ingredient in a product — including what is hidden "
+        "inside the word 'fragrance' — so anyone can check it."
     ),
     "Product Type / Category": (
         "The type of product (e.g., Hair Extensions, Nail Products, "
@@ -507,6 +522,17 @@ def page_products(data):
                         'cscp_authoritative_lists': 'On These Official Lists',
                     })
                     st.dataframe(fda_chems, width='stretch', hide_index=True)
+
+        # Certification readiness snapshot
+        st.divider()
+        st.markdown(
+            "**Certification Readiness**",
+            help=(
+                "How this product screens against three voluntary certification programs. "
+                "See the Certifications page for the full rules and their limits."
+            ),
+        )
+        render_certification_badges(certs.screen_products(data), pid)
 
         # Show ingredients for this product
         if len(identity) > 0:
@@ -1086,6 +1112,313 @@ def page_categories(data):
     )
 
 
+def render_certification_badges(product_screen, product_id):
+    """Show the three certification outcomes for one product as a badge row."""
+    rows = certs.product_certification_status(product_screen, product_id)
+    if rows is None or len(rows) == 0:
+        return
+    cols = st.columns(len(rows))
+    for col, row in zip(cols, rows.to_dict("records")):
+        with col:
+            st.markdown(f"**{row['standard']}**")
+            st.markdown(f"{row['status_icon']} {row['status']}")
+            st.caption(row["summary"])
+            if row["blocking_ingredients"]:
+                st.caption(f"Blocked by: {row['blocking_ingredients']}")
+            elif row["review_ingredients"]:
+                st.caption(f"Flagged: {row['review_ingredients']}")
+
+
+def page_certifications(data):
+    """Third-party certification readiness screening page."""
+    st.header("Certification Readiness")
+
+    st.info(
+        "**What this page shows:** Some hair and personal care products carry a seal from an "
+        "independent organization that checked the formula against a published safety standard. "
+        "This page explains the three standards that matter most for hair care — **EWG VERIFIED**, "
+        "**Cradle to Cradle Certified**, and **The Living Product Challenge** — and then checks "
+        "every product in our database against the ingredient rules each one publishes. "
+        "Use it to see which products contain something that would block a certification, "
+        "and which chemicals are doing the blocking."
+    )
+
+    st.warning(
+        "**Read this before you read the results.** This is an unofficial pre-screen, not a "
+        "certification decision. Our ingredient data comes from the California Safe Cosmetics "
+        "Program, which only collects the *hazardous* ingredients a company must report — not the "
+        "full recipe. Every product here is in that database precisely because it reports at least "
+        "one chemical of concern, so a low pass rate is expected. Real certification also inspects "
+        "factories, packaging, water and energy use, and the full supplier chain — none of which "
+        "any ingredient list can show.",
+        icon="⚠️",
+    )
+
+    product_screen = certs.screen_products(data)
+    findings = certs.screen_chemicals(data)
+
+    # ── The three standards ──────────────────────────────────────────────────
+    st.subheader("The Three Standards")
+    st.caption("Click a tab to see what each organization checks and what it cannot check.")
+
+    tabs = st.tabs([certs.STANDARDS[k].name for k in certs.STANDARD_KEYS])
+    for tab, key in zip(tabs, certs.STANDARD_KEYS):
+        std = certs.STANDARDS[key]
+        with tab:
+            st.markdown(f"### {std.name}")
+            st.caption(f"Awarded by {std.issuer} — {std.tagline}")
+            st.markdown(std.summary)
+
+            col_l, col_r = st.columns(2)
+            with col_l:
+                st.markdown("**What it checks**")
+                for item in std.covers:
+                    st.markdown(f"- {item}")
+                st.markdown("**Ingredient rules come from**")
+                st.markdown(std.ingredient_basis)
+            with col_r:
+                st.markdown("**What must be disclosed**")
+                st.markdown(std.disclosure_rule)
+                st.markdown("**What an ingredient list cannot tell you**")
+                for item in std.beyond_ingredients:
+                    st.markdown(f"- {item}")
+                st.markdown("**Why it matters for hair care**")
+                st.markdown(std.hair_care_note)
+
+            if len(product_screen) > 0:
+                rows = product_screen[product_screen["standard_key"] == key]
+                total = len(rows)
+                blocked = int((rows["status"] == certs.STATUS_BLOCKED).sum())
+                review = int((rows["status"] == certs.STATUS_REVIEW).sum())
+                clear = int((rows["status"] == certs.STATUS_CLEAR).sum())
+                m1, m2, m3 = st.columns(3)
+                m1.metric(
+                    "Products with a blocking ingredient", f"{blocked} of {total}",
+                    help="Contains at least one chemical this program excludes outright.",
+                )
+                m2.metric(
+                    "Products needing a closer look", review,
+                    help="Nothing banned outright, but something a certifier would question.",
+                )
+                m3.metric(
+                    "Products with no blockers found", clear,
+                    help="Nothing disqualifying in the chemicals we can see. Not a pass.",
+                )
+            st.link_button(f"Official {std.name} criteria", std.url)
+
+    if len(product_screen) == 0:
+        st.warning("No product data available to screen.")
+        return
+
+    # ── Side-by-side comparison ──────────────────────────────────────────────
+    st.divider()
+    st.subheader("How Our Products Score Against Each Standard")
+    n_products = product_screen["product_id"].nunique()
+    st.caption(
+        f"Each bar covers all {n_products} products. Red = contains something the program bans "
+        "outright. Orange = needs a closer look. Green = nothing disqualifying in the chemicals "
+        "we can see."
+    )
+
+    rollup = certs.standard_rollup(product_screen)
+    status_colors = {
+        certs.STATUS_BLOCKED: '#e74c3c',
+        certs.STATUS_REVIEW: '#e67e22',
+        certs.STATUS_CLEAR: '#27ae60',
+        certs.STATUS_NO_DATA: '#7f8c8d',
+    }
+    fig = px.bar(
+        rollup, x="products", y="standard", color="status", orientation="h",
+        color_discrete_map=status_colors,
+        category_orders={"status": certs.STATUS_ORDER},
+        labels={
+            "products": "Number of Products",
+            "standard": "Certification",
+            "status": "Screening Result",
+        },
+        text="products",
+    )
+    fig.update_layout(
+        barmode="stack", height=320, margin=dict(t=20, b=20),
+        legend=dict(title="Screening Result", orientation="h", x=0.01, y=1.15),
+    )
+    st.plotly_chart(fig, width='stretch')
+
+    st.caption(
+        "EWG VERIFIED is the strictest screen here because it bans outright any ingredient linked "
+        "to cancer or reproductive harm. The Living Product Challenge blocks fewer products "
+        "because its Red List names specific chemical families — but almost everything lands in "
+        "'needs a closer look', since the program demands a public, complete ingredient label."
+    )
+
+    # ── Product-level results ────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Product Screening Results")
+
+    col_f1, col_f2, col_f3 = st.columns(3)
+    with col_f1:
+        std_choice = st.selectbox(
+            "Certification", [certs.STANDARDS[k].name for k in certs.STANDARD_KEYS],
+        )
+    with col_f2:
+        status_choice = st.selectbox(
+            "Screening result", ["All"] + certs.STATUS_ORDER,
+        )
+    with col_f3:
+        cat_options = ["All"] + sorted(
+            product_screen["category_raw"].dropna().unique().tolist()
+        )
+        cat_choice = st.selectbox("Product type", cat_options)
+
+    view = product_screen[product_screen["standard"] == std_choice]
+    if status_choice != "All":
+        view = view[view["status"] == status_choice]
+    if cat_choice != "All":
+        view = view[view["category_raw"] == cat_choice]
+
+    st.caption(f"Showing {len(view)} product(s).")
+    display = view[[
+        "status_icon", "product_name", "brand", "category_raw",
+        "status", "blocking_ingredients", "review_ingredients",
+    ]].rename(columns={
+        "status_icon": " ",
+        "product_name": "Product",
+        "brand": "Brand",
+        "category_raw": "Product Type",
+        "status": "Screening Result",
+        "blocking_ingredients": "Ingredients That Block It",
+        "review_ingredients": "Ingredients Needing Review",
+    })
+    st.dataframe(display, width='stretch', hide_index=True, height=380)
+
+    # ── One product in detail ────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Certification Detail for One Product")
+    st.caption("Pick a product to see how it screens against all three standards, and why.")
+
+    product_names = sorted(product_screen["product_name"].dropna().unique().tolist())
+    if product_names:
+        chosen = st.selectbox("Select a product", product_names, key="cert_product")
+        chosen_rows = product_screen[product_screen["product_name"] == chosen]
+        pid = chosen_rows.iloc[0]["product_id"]
+        render_certification_badges(product_screen, pid)
+
+        identity = data.get("identity", pd.DataFrame())
+        prod_ingredients = []
+        if len(identity) > 0:
+            prod_ingredients = (
+                identity[identity["product_id"] == pid]["ingredient_raw"]
+                .dropna().unique().tolist()
+            )
+        prod_findings = findings[findings["ingredient_raw"].isin(prod_ingredients)]
+        if len(prod_findings) > 0:
+            st.markdown("**Why — every ingredient issue found, and the rule it trips:**")
+            detail = prod_findings[[
+                "ingredient_raw", "standard", "rule", "severity",
+                "evidence", "published_basis",
+            ]].copy()
+            detail["severity"] = detail["severity"].map({
+                certs.SEVERITY_BLOCKING: "Blocks certification",
+                certs.SEVERITY_REVIEW: "Needs review",
+            }).fillna(detail["severity"])
+            detail = detail.rename(columns={
+                "ingredient_raw": "Ingredient (As Listed on Label)",
+                "standard": "Certification",
+                "rule": "Rule It Trips",
+                "severity": "How Serious",
+                "evidence": "What We Found in the Data",
+                "published_basis": "What the Program Publishes",
+            })
+            st.dataframe(detail, width='stretch', hide_index=True)
+        else:
+            st.success(
+                "No certification blockers found in the reported ingredients for this product."
+            )
+
+    # ── Ingredients doing the blocking ───────────────────────────────────────
+    st.divider()
+    st.subheader("Which Ingredients Block Certification Most Often")
+    st.caption(
+        "Reformulating away from the ingredients at the top of this chart would clear the most "
+        "products at once."
+    )
+
+    impact = certs.ingredient_impact(data)
+    if len(impact) > 0:
+        top = impact[impact["blocked_standard_count"] > 0].head(12).copy()
+        if len(top) > 0:
+            top["blocked_label"] = top["blocked_standard_count"].map({
+                3: "Blocks all 3", 2: "Blocks 2", 1: "Blocks 1",
+            })
+            fig2 = px.bar(
+                top.sort_values("products_affected"),
+                x="products_affected", y="ingredient_raw", orientation="h",
+                color="blocked_label",
+                color_discrete_map={
+                    "Blocks all 3": "#7b241c",
+                    "Blocks 2": "#e74c3c",
+                    "Blocks 1": "#e67e22",
+                },
+                category_orders={
+                    "blocked_label": ["Blocks all 3", "Blocks 2", "Blocks 1"]
+                },
+                labels={
+                    "products_affected": "Number of Products Containing It",
+                    "ingredient_raw": "Ingredient",
+                    "blocked_label": "Certifications Blocked",
+                },
+                text="products_affected",
+            )
+            fig2.update_layout(
+                height=460, margin=dict(t=20, b=20, l=10),
+                legend=dict(title="Certifications Blocked", orientation="h", x=0.01, y=1.12),
+            )
+            st.plotly_chart(fig2, width='stretch')
+
+        st.dataframe(
+            impact[[
+                "ingredient_raw", "products_affected", "blocks", "needs_review",
+            ]].rename(columns={
+                "ingredient_raw": "Ingredient (As Listed on Label)",
+                "products_affected": "# Products Containing It",
+                "blocks": "Blocks These Certifications",
+                "needs_review": "Flagged for Review By",
+            }),
+            width='stretch', hide_index=True,
+        )
+
+    # ── Methodology ──────────────────────────────────────────────────────────
+    st.divider()
+    with st.expander("How we screened — every rule, in plain language"):
+        st.markdown(
+            "Each rule below is matched against the hazard and regulatory data we already "
+            "collected for every ingredient (GHS classifications from PubChem, California "
+            "Proposition 65 listings, IARC cancer groups, and EU REACH restrictions). "
+            "A rule can **block** a certification or merely flag it for **review**, and the "
+            "same rule is often treated differently by different programs — that difference is "
+            "spelled out in the last column."
+        )
+        rule_rows = []
+        for rule in certs.RULES:
+            for key in certs.STANDARD_KEYS:
+                severity, basis = rule.applies[key]
+                rule_rows.append({
+                    "Rule": rule.title,
+                    "What It Means": rule.plain,
+                    "Certification": certs.STANDARDS[key].name,
+                    "Blocks or Reviews": (
+                        "Blocks" if severity == certs.SEVERITY_BLOCKING else "Review"
+                    ),
+                    "Published Basis": basis,
+                })
+        st.dataframe(pd.DataFrame(rule_rows), width='stretch', hide_index=True)
+        st.caption(
+            f"Criteria last reviewed against the certifiers' published documents: "
+            f"{certs.CRITERIA_REVIEWED}. Programs revise their lists over time — confirm "
+            "against the official criteria linked above before acting on these results."
+        )
+
+
 def page_identity(data):
     """Chemical Name Matching coverage page."""
     st.header("Chemical Name Matching")
@@ -1218,6 +1551,7 @@ pages = {
     "Chemicals": page_chemicals,
     "Brands": page_brands,
     "Categories": page_categories,
+    "Certifications": page_certifications,
     "Chemical Name Matching": page_identity,
 }
 
@@ -1229,6 +1563,13 @@ st.sidebar.markdown("🔴 **HIGH** — Contains chemicals with serious health wa
 st.sidebar.markdown("🟠 **MEDIUM** — Contains chemicals with moderate health concerns")
 st.sidebar.markdown("🟢 **LOW** — Minimal hazard chemicals")
 st.sidebar.markdown("⚫ **No Data** — Not enough info to rate")
+
+st.sidebar.divider()
+st.sidebar.markdown("**Certification Screening Guide**")
+st.sidebar.markdown("🔴 **Would not qualify** — contains a banned-type ingredient")
+st.sidebar.markdown("🟠 **Needs review** — a certifier would question something")
+st.sidebar.markdown("🟢 **No blockers found** — nothing disqualifying we can see")
+st.sidebar.caption("A pre-screen of reported ingredients only — not a certification decision.")
 
 st.sidebar.divider()
 st.sidebar.markdown("**Data Sources**")
