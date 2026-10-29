@@ -80,3 +80,49 @@ def test_crossref_and_suspects():
     assert sus.loc["DTXSID7025502", "eu_fragrance_allergen"]  # linalool
     assert sus.loc["DTXSID7025502", "tox_evidence_gap"]
     assert sus.loc["DTXSID9021392", "in_hair_glue_warehouse"]
+
+
+def test_gcms_suspect_list_tiers():
+    from warehouse.build_gcms_suspect_list import COLUMNS, build_gcms_suspect_list
+    from warehouse.source_nta_data import EU_FRAGRANCE_ALLERGENS_26
+
+    def row(dtxsid, name, cas, n, gc, lc, allergen=False, phth=False, adhesive=False):
+        return {
+            "mapped_id": dtxsid, "chemical_name": name, "casrn": cas, "study_count": n,
+            "detected_by_gc": gc, "detected_by_lc": lc, "eu_fragrance_allergen": allergen,
+            "is_phthalate": phth, "in_adhesive_product": adhesive, "tox_evidence_gap": True,
+        }
+
+    suspects = pd.DataFrame([
+        row("D1", "Linalool", "78-70-6", 2, True, False, allergen=True),
+        row("D2", "Diethyl phthalate", "84-66-2", 4, True, False, phth=True),
+        row("D3", "Common GC thing", "1-1-1", 3, True, False),
+        row("D4", "Rare GC thing", "2-2-2", 1, True, False),
+        row("D5", "LC-only adhesive PFAS", None, 1, False, True, adhesive=True),
+        row("D6", "Myrcene", "123-35-3", 3, True, True),
+    ])
+    crossref = pd.DataFrame([
+        {"dtxsid": "D6", "casrn": "123-35-3", "chemical_name": "Myrcene", "nta_detected": True,
+         "nta_study_count": 7, "nta_chromatography": "GC", "nta_toxcast_yn": True,
+         "nta_toxvaldb_yn": True},
+        {"dtxsid": "D7", "casrn": "100-42-5", "chemical_name": "Styrene", "nta_detected": True,
+         "nta_study_count": 7, "nta_chromatography": "GC | LC", "nta_toxcast_yn": True,
+         "nta_toxvaldb_yn": True},
+        {"dtxsid": "D8", "casrn": "50-00-0", "chemical_name": "Formaldehyde", "nta_detected": False,
+         "nta_study_count": 0, "nta_chromatography": "", "nta_toxcast_yn": True,
+         "nta_toxvaldb_yn": True},
+    ])
+
+    out = build_gcms_suspect_list(suspects, crossref)
+    tier = dict(zip(out["chemical_name"], out["tier"]))
+
+    assert list(out.columns) == COLUMNS
+    assert tier["Linalool"] == 1 and tier["Diethyl phthalate"] == 1
+    assert tier["Myrcene"] == 1 and tier["Styrene"] == 1   # declared, GC-detected
+    assert "Formaldehyde" not in tier                      # declared but never GC-detected
+    assert tier["Common GC thing"] == 2 and tier["Rare GC thing"] == 3
+    assert "LC-only adhesive PFAS" not in tier             # not screenable by GC
+    # All 26 allergens are on the panel, seen by NTA or not
+    allergen_cas = set(out.loc[out["eu_fragrance_allergen"].astype(bool), "casrn"])
+    assert allergen_cas == set(EU_FRAGRANCE_ALLERGENS_26)
+    assert out["retention_index"].isna().all()

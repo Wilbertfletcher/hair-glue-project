@@ -6,7 +6,7 @@
 
 ---
 
-## Last Updated: 2026-09-24 (session 10 — M3.5 NTA measured-chemistry integration)
+## Last Updated: 2026-10-29 (session 11 — M3.5c GC-MS suspect list v1, draft)
 
 ## Current Milestone: M3 — EPA Data Integration, Exposure Analysis & Public Report
 
@@ -42,6 +42,24 @@ See `plan/ROADMAP-M3.md` for full spec.
 ## Session History
 
 > Append new entries at the **top** of this list. Do not delete old entries.
+
+
+### 2026-10-29 — M3.5c GC-MS suspect list v1, draft (Session 11)
+
+- Added `warehouse/build_gcms_suspect_list.py`
+  (`PYTHONPATH=. python warehouse/build_gcms_suspect_list.py`), writing
+  `warehouse/gcms_suspect_list_v1.csv` and `gcms_suspect_list_v1.manifest.json`.
+- Tier 1, the targeted panel (35): all 26 EU fragrance allergens (6 never reported
+  by NTA), 5 phthalates, and the 4 declared hair-glue chemicals NTA has detected by
+  GC (styrene, NMP, myrcene, triethanolamine). LC-only adhesive detections (three
+  PFAS acids) are excluded: this instrument can't see them.
+- Tier 2 (309): GC-detected in personal care by >= 2 studies. Tier 3 (1,646): one study.
+- **Status: draft, not locked.** The manifest lists what remains before lock:
+  retention index and NIST availability (need the NIST library at UL Solutions),
+  the 54 further allergens of Regulation (EU) 2023/1545, a check against the
+  <= 0.001% LOQ target, and approver and date.
+- Source-data note: tier 3 has one CAS (2461-18-9) under two DTXSIDs.
+- Tests: `test_gcms_suspect_list_tiers` in `tests/test_nta_curation.py`.
 
 
 ### 2026-09-24 — M3.5 NTA cross-reference (Session 10)

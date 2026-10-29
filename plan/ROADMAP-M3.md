@@ -364,7 +364,7 @@ at the center of the proposal's Aim 1.
 | ID | Task | Output |
 |----|------|--------|
 | M3.5b | Map `cpdat_category` codes to CPDat category names (download the CPDat PUC table) | `dim_cpdat_category.parquet` |
-| M3.5c | Pre-register the GC-MS suspect list: filter the suspect list to GC-amenable chemicals and add retention index and NIST availability | `gcms_suspect_list_v1.csv` for UL Solutions |
+| M3.5c | Pre-register the GC-MS suspect list: filter the suspect list to GC-amenable chemicals and add retention index and NIST availability | `gcms_suspect_list_v1.csv` for UL Solutions. **v1 draft built 2026-10-29** (`warehouse/build_gcms_suspect_list.py`): 35 tier 1, 309 tier 2, 1,646 tier 3. Before lock: retention index and NIST columns, the 54 further allergens of Reg. (EU) 2023/1545, approver and date in the manifest |
 | M3.5d | Run the same CSCP-vs-NTA comparison for *all* CSCP cosmetics (feeds M3.3 benchmarking) | declared-vs-measured overlap by category |
 | M3.5e | Pull CompTox hazard/ToxCast data for high-frequency suspect chemicals that have evidence | `ref_suspects_hazard.parquet` |
 

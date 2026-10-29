@@ -1,0 +1,25 @@
+{
+  "list": "gcms_suspect_list_v1.csv",
+  "version": 1,
+  "status": "draft",
+  "built_on": "2026-10-29",
+  "locked_on": null,
+  "approved_by": null,
+  "source_dataset": "UL Chemical Insights curated NTA, release 2026-05-15",
+  "inputs": {
+    "warehouse/nta_personal_care_suspect_list.parquet": "643dbc0844e7e4c988981c8612264dfb3dcf0e576c6fa02fa3f316c785534ff3",
+    "warehouse/ref_chemicals_nta.parquet": "8f08e51e6e08c565314e7d25e4188e729278f09c73a6f2b8b91397cbac2e5a31"
+  },
+  "output_sha256": "a409887b6455f04cfcac4c9f55160bd7a72ed2179df367eba1568d79baf45a3c",
+  "counts": {
+    "tier_1": 35,
+    "tier_2": 309,
+    "tier_3": 1646
+  },
+  "open_before_lock": [
+    "Fill retention_index and nist_library (NIST library at UL Solutions)",
+    "Add the 54 further allergens made individually declarable by Regulation (EU) 2023/1545 (80 in total) to tier 1",
+    "Confirm the tier 1 panel against the GC-MS method's LOQ target (<= 0.001%)",
+    "Record approver and date here, then treat v1 as frozen"
+  ]
+}
